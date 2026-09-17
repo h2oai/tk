@@ -16,11 +16,13 @@ By default, performs a dry-run showing what would be deleted.
 Use --fix to actually delete the tickets.
 
 Refuses deletion if a closed ticket:
-  - Has dependants (other tickets depend on it, regardless of status)
-  - Has non-closed children (other tickets have it as parent and are open/in_progress)
+  - Has dependants that are not themselves being deleted
+  - Has children that are not themselves being deleted
   - Has bidirectional links
 
-This ensures that only truly obsolete closed tickets are removed.`,
+Deletability is transitive: closed tickets that are only referenced by other
+closed tickets being deleted in the same run are removed together, so one run
+clears an entire chain of closed dependencies.`,
 	Args: cobra.NoArgs,
 	RunE: runClean,
 }
@@ -39,6 +41,100 @@ type cleanableTicket struct {
 	reason  string
 }
 
+// deletionPlan classifies every closed ticket as deletable or blocked.
+//
+// Blocking is transitive: a closed ticket is safe to delete only if everything
+// referencing it is deleted in the same run. Checking each ticket once against
+// the unmodified ticket set would peel off a single level of a dependency chain
+// per invocation, so instead we start with every closed ticket as a candidate
+// and shrink that set to a fixed point.
+func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
+	// Reverse indices: who points at each ticket.
+	dependants := make(map[string][]*ticket.Ticket)
+	children := make(map[string][]*ticket.Ticket)
+	for _, t := range allTickets {
+		for _, depID := range t.Deps {
+			if depID != t.ID {
+				dependants[depID] = append(dependants[depID], t)
+			}
+		}
+		if t.Parent != "" {
+			children[t.Parent] = append(children[t.Parent], t)
+		}
+	}
+
+	// Every closed ticket starts as a candidate, except those with links,
+	// which always block deletion.
+	deletable := make(map[string]bool)
+	reasons := make(map[string]string)
+	var closed []*ticket.Ticket
+	for _, t := range allTickets {
+		if t.Status != ticket.StatusClosed {
+			continue
+		}
+		closed = append(closed, t)
+		if len(t.Links) > 0 {
+			reasons[t.ID] = "has links"
+			continue
+		}
+		deletable[t.ID] = true
+	}
+
+	// Drop candidates referenced by a ticket that survives this run, repeating
+	// until the set stops shrinking. Candidates that only reference each other
+	// (including dependency cycles) survive the loop and are deleted together.
+	for changed := true; changed; {
+		changed = false
+		for _, t := range closed {
+			if !deletable[t.ID] {
+				continue
+			}
+			if reason, blocked := blockingReason(t.ID, dependants, children, deletable); blocked {
+				delete(deletable, t.ID)
+				reasons[t.ID] = reason
+				changed = true
+			}
+		}
+	}
+
+	plan := make([]cleanableTicket, 0, len(closed))
+	for _, t := range closed {
+		ct := cleanableTicket{ticket: t}
+		if !deletable[t.ID] {
+			ct.blocked = true
+			ct.reason = reasons[t.ID]
+		}
+		plan = append(plan, ct)
+	}
+	return plan
+}
+
+// blockingReason reports why a candidate cannot be deleted, given the set of
+// tickets currently expected to be deleted in this run.
+func blockingReason(id string, dependants, children map[string][]*ticket.Ticket, deletable map[string]bool) (string, bool) {
+	for _, d := range dependants[id] {
+		if !deletable[d.ID] {
+			return "has dependants", true
+		}
+	}
+
+	hasBlockedChild := false
+	for _, c := range children[id] {
+		if deletable[c.ID] {
+			continue
+		}
+		if c.Status != ticket.StatusClosed {
+			return "has non-closed children", true
+		}
+		hasBlockedChild = true
+	}
+	if hasBlockedChild {
+		return "has blocked children", true
+	}
+
+	return "", false
+}
+
 func runClean(cmd *cobra.Command, args []string) error {
 	// 1. Load all tickets
 	allTickets, err := store.List()
@@ -46,50 +142,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 2. Filter for closed tickets and check if they're safe to delete
-	var cleanable []cleanableTicket
-	for _, t := range allTickets {
-		if t.Status != ticket.StatusClosed {
-			continue
-		}
-
-		ct := cleanableTicket{ticket: t}
-
-		// Check for dependants
-		dependants := findDependants(allTickets, t.ID)
-		if len(dependants) > 0 {
-			ct.blocked = true
-			ct.reason = "has dependants"
-			cleanable = append(cleanable, ct)
-			continue
-		}
-
-		// Check for children (only non-closed children block deletion)
-		children := findChildren(allTickets, t.ID)
-		var nonClosedChildren []*ticket.Ticket
-		for _, child := range children {
-			if child.Status != ticket.StatusClosed {
-				nonClosedChildren = append(nonClosedChildren, child)
-			}
-		}
-		if len(nonClosedChildren) > 0 {
-			ct.blocked = true
-			ct.reason = "has non-closed children"
-			cleanable = append(cleanable, ct)
-			continue
-		}
-
-		// Check for links
-		if len(t.Links) > 0 {
-			ct.blocked = true
-			ct.reason = "has links"
-			cleanable = append(cleanable, ct)
-			continue
-		}
-
-		// If we get here, ticket is safe to delete
-		cleanable = append(cleanable, ct)
-	}
+	// 2. Classify closed tickets as deletable or blocked
+	cleanable := deletionPlan(allTickets)
 
 	// 3. Separate into deletable and blocked lists
 	var deletable []cleanableTicket

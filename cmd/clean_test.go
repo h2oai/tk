@@ -198,7 +198,7 @@ func TestCleanRefuseWithDependants(t *testing.T) {
 		}
 	})
 
-	t.Run("closed ticket with closed dependant", func(t *testing.T) {
+	t.Run("closed ticket whose closed dependant is itself blocked", func(t *testing.T) {
 		ctx, cleanup := setupTestCmd(t)
 		defer cleanup()
 
@@ -213,14 +213,25 @@ func TestCleanRefuseWithDependants(t *testing.T) {
 		ctx.exec("dep", idB, idA)
 		ctx.exec("close", idB)
 
+		// Create open ticket C that depends on B, pinning B in place
+		idC, _ := ctx.exec("new", "Open dependant")
+		idC = strings.TrimSpace(idC)
+		ctx.exec("dep", idC, idB)
+
 		output, err := ctx.exec("clean")
 		if err != nil {
 			t.Fatalf("clean command error: %v", err)
 		}
 
-		// Both are closed, but A is blocked
+		// B is blocked by open C, so A is blocked by surviving B
 		if !strings.Contains(output, "Found 2 closed ticket(s)") {
 			t.Errorf("expected 'Found 2 closed ticket(s)', got: %s", output)
+		}
+		if !strings.Contains(output, "0 deletable") {
+			t.Errorf("expected '0 deletable', got: %s", output)
+		}
+		if !strings.Contains(output, "2 blocked") {
+			t.Errorf("expected '2 blocked', got: %s", output)
 		}
 		if !strings.Contains(output, "has dependants") {
 			t.Errorf("expected 'has dependants', got: %s", output)
@@ -891,9 +902,9 @@ func TestCleanClosedDependsOnClosed(t *testing.T) {
 	ctx.exec("dep", idB, idA)
 	ctx.exec("close", idB)
 
-	// Both are closed
-	// A is blocked (B depends on it)
-	// B is deletable (its dependency being closed doesn't block deletion)
+	// Both are closed and nothing outside the pair references them, so both
+	// are deletable in the same run: B is unreferenced, and A's only dependant
+	// (B) is being deleted too.
 
 	output, err := ctx.exec("clean")
 	if err != nil {
@@ -903,11 +914,11 @@ func TestCleanClosedDependsOnClosed(t *testing.T) {
 	if !strings.Contains(output, "Found 2 closed ticket(s)") {
 		t.Errorf("expected 'Found 2 closed ticket(s)', got: %s", output)
 	}
-	if !strings.Contains(output, "1 deletable") {
-		t.Errorf("expected '1 deletable', got: %s", output)
+	if !strings.Contains(output, "2 deletable") {
+		t.Errorf("expected '2 deletable', got: %s", output)
 	}
-	if !strings.Contains(output, "1 blocked") {
-		t.Errorf("expected '1 blocked', got: %s", output)
+	if !strings.Contains(output, "0 blocked") {
+		t.Errorf("expected '0 blocked', got: %s", output)
 	}
 
 	// Run with --fix
@@ -916,20 +927,219 @@ func TestCleanClosedDependsOnClosed(t *testing.T) {
 		t.Fatalf("clean --fix command error: %v", err)
 	}
 
-	// B should be deleted, A should remain
-	if !strings.Contains(output, "Deleted: "+idB) {
-		t.Errorf("expected ticket B to be deleted, got: %s", output)
+	for _, id := range []string{idA, idB} {
+		if !strings.Contains(output, "Deleted: "+id) {
+			t.Errorf("expected ticket %s to be deleted, got: %s", id, output)
+		}
+		if _, err := ctx.store().Get(id); err == nil {
+			t.Errorf("ticket %s should be deleted", id)
+		}
+	}
+}
+
+// TestCleanDeepDependencyChain - An entire chain of closed tickets is removed
+// in a single run, not one level per invocation.
+func TestCleanDeepDependencyChain(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Build a 5-deep chain: ids[4] -> ids[3] -> ids[2] -> ids[1] -> ids[0]
+	var ids []string
+	for i := 0; i < 5; i++ {
+		id, _ := ctx.exec("new", "Chain ticket")
+		id = strings.TrimSpace(id)
+		if i > 0 {
+			ctx.exec("dep", id, ids[i-1])
+		}
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		ctx.exec("close", id)
 	}
 
-	// Verify A still exists
-	ticketA, err := ctx.store().Get(idA)
-	if err != nil || ticketA == nil {
-		t.Errorf("ticket A should still exist")
+	// Dry-run should already report the whole chain as deletable
+	output, err := ctx.exec("clean")
+	if err != nil {
+		t.Fatalf("clean command error: %v", err)
+	}
+	if !strings.Contains(output, "5 deletable") {
+		t.Errorf("expected '5 deletable', got: %s", output)
+	}
+	if !strings.Contains(output, "0 blocked") {
+		t.Errorf("expected '0 blocked', got: %s", output)
 	}
 
-	// Verify B is deleted
-	_, err = ctx.store().Get(idB)
-	if err == nil {
-		t.Errorf("ticket B should be deleted")
+	// A single --fix run must delete all of them
+	output, err = ctx.exec("clean", "--fix")
+	if err != nil {
+		t.Fatalf("clean --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "Deleted 5 ticket(s)") {
+		t.Errorf("expected 'Deleted 5 ticket(s)' in one run, got: %s", output)
+	}
+	for _, id := range ids {
+		if _, err := ctx.store().Get(id); err == nil {
+			t.Errorf("ticket %s should be deleted after a single run", id)
+		}
+	}
+
+	// Nothing should be left for a second run
+	output, err = ctx.exec("clean", "--fix")
+	if err != nil {
+		t.Fatalf("second clean --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "No closed tickets found") {
+		t.Errorf("expected nothing left to clean, got: %s", output)
+	}
+}
+
+// TestCleanDeepParentChain - A nested hierarchy of closed tickets is removed in
+// a single run.
+func TestCleanDeepParentChain(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Build a 4-deep hierarchy: ids[0] > ids[1] > ids[2] > ids[3]
+	var ids []string
+	for i := 0; i < 4; i++ {
+		var id string
+		if i == 0 {
+			id, _ = ctx.exec("new", "Root ticket")
+		} else {
+			id, _ = ctx.exec("new", "--parent", ids[i-1], "Child ticket")
+		}
+		ids = append(ids, strings.TrimSpace(id))
+	}
+	for _, id := range ids {
+		ctx.exec("close", id)
+	}
+
+	output, err := ctx.exec("clean", "--fix")
+	if err != nil {
+		t.Fatalf("clean --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "Deleted 4 ticket(s)") {
+		t.Errorf("expected 'Deleted 4 ticket(s)' in one run, got: %s", output)
+	}
+	for _, id := range ids {
+		if _, err := ctx.store().Get(id); err == nil {
+			t.Errorf("ticket %s should be deleted after a single run", id)
+		}
+	}
+}
+
+// TestCleanChainBlockedAtHead - An open dependant at the head of a closed chain
+// blocks the whole chain, so no run creates dangling references.
+func TestCleanChainBlockedAtHead(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Build a 3-deep closed chain: ids[2] -> ids[1] -> ids[0]
+	var ids []string
+	for i := 0; i < 3; i++ {
+		id, _ := ctx.exec("new", "Chain ticket")
+		id = strings.TrimSpace(id)
+		if i > 0 {
+			ctx.exec("dep", id, ids[i-1])
+		}
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		ctx.exec("close", id)
+	}
+
+	// An open ticket depends on the last link in the chain
+	idOpen, _ := ctx.exec("new", "Open dependant")
+	idOpen = strings.TrimSpace(idOpen)
+	ctx.exec("dep", idOpen, ids[2])
+
+	output, err := ctx.exec("clean", "--fix")
+	if err != nil {
+		t.Fatalf("clean --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "No deletable tickets") {
+		t.Errorf("expected nothing deletable, got: %s", output)
+	}
+
+	// Every ticket in the chain must survive, keeping all deps resolvable
+	for _, id := range ids {
+		if _, err := ctx.store().Get(id); err != nil {
+			t.Errorf("ticket %s should still exist: %v", id, err)
+		}
+	}
+}
+
+// TestCleanBlockedClosedChildBlocksParent - A closed parent is not deleted when
+// a closed child survives, which would leave a dangling parent reference.
+func TestCleanBlockedClosedChildBlocksParent(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Closed parent, plus a standalone open ticket. The open ticket is created
+	// before any --parent use: the new command's flag variable is process-wide
+	// and would otherwise leak the parent onto it.
+	idParent, _ := ctx.exec("new", "Closed parent")
+	idParent = strings.TrimSpace(idParent)
+	ctx.exec("close", idParent)
+
+	idOpen, _ := ctx.exec("new", "Open dependant")
+	idOpen = strings.TrimSpace(idOpen)
+
+	// Closed child of the parent
+	idChild, _ := ctx.exec("new", "--parent", idParent, "Closed child")
+	idChild = strings.TrimSpace(idChild)
+	ctx.exec("close", idChild)
+
+	// The open ticket depends on the child, so the child must survive
+	ctx.exec("dep", idOpen, idChild)
+
+	output, err := ctx.exec("clean", "--fix")
+	if err != nil {
+		t.Fatalf("clean --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "No deletable tickets") {
+		t.Errorf("expected nothing deletable, got: %s", output)
+	}
+
+	// The child's parent reference must still resolve
+	child, err := ctx.store().Get(idChild)
+	if err != nil {
+		t.Fatalf("child %s should still exist: %v", idChild, err)
+	}
+	if child.Parent != idParent {
+		t.Errorf("child parent = %q, want %q", child.Parent, idParent)
+	}
+	if _, err := ctx.store().Get(idParent); err != nil {
+		t.Errorf("parent %s should still exist: %v", idParent, err)
+	}
+}
+
+// TestCleanDependencyCycle - Mutually dependent closed tickets are deleted
+// together rather than blocking each other forever.
+func TestCleanDependencyCycle(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	idA, _ := ctx.exec("new", "Ticket A")
+	idA = strings.TrimSpace(idA)
+	idB, _ := ctx.exec("new", "Ticket B")
+	idB = strings.TrimSpace(idB)
+
+	ctx.exec("dep", idA, idB)
+	ctx.exec("dep", idB, idA)
+	ctx.exec("close", idA)
+	ctx.exec("close", idB)
+
+	output, err := ctx.exec("clean", "--fix")
+	if err != nil {
+		t.Fatalf("clean --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "Deleted 2 ticket(s)") {
+		t.Errorf("expected 'Deleted 2 ticket(s)', got: %s", output)
+	}
+	for _, id := range []string{idA, idB} {
+		if _, err := ctx.store().Get(id); err == nil {
+			t.Errorf("ticket %s should be deleted", id)
+		}
 	}
 }
