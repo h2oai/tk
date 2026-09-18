@@ -18,11 +18,12 @@ Use --fix to actually delete the tickets.
 Refuses deletion if a closed ticket:
   - Has dependants that are not themselves being deleted
   - Has children that are not themselves being deleted
-  - Has bidirectional links
+  - Has links to a ticket that is not itself being deleted
 
-Deletability is transitive: closed tickets that are only referenced by other
-closed tickets being deleted in the same run are removed together, so one run
-clears an entire chain of closed dependencies.`,
+Deletability is transitive: closed tickets that are only referenced (via
+dependants, children, or links) by other closed tickets being deleted in the
+same run are removed together, so one run clears an entire chain of closed
+dependencies.`,
 	Args: cobra.NoArgs,
 	RunE: runClean,
 }
@@ -52,7 +53,9 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 	// Reverse indices: who points at each ticket.
 	dependants := make(map[string][]*ticket.Ticket)
 	children := make(map[string][]*ticket.Ticket)
+	byID := make(map[string]*ticket.Ticket, len(allTickets))
 	for _, t := range allTickets {
+		byID[t.ID] = t
 		for _, depID := range t.Deps {
 			if depID != t.ID {
 				dependants[depID] = append(dependants[depID], t)
@@ -63,8 +66,8 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 		}
 	}
 
-	// Every closed ticket starts as a candidate, except those with links,
-	// which always block deletion.
+	// Every closed ticket starts as a candidate; dependants, children, and
+	// links can all demote it during the fixed-point loop below.
 	deletable := make(map[string]bool)
 	reasons := make(map[string]string)
 	var closed []*ticket.Ticket
@@ -73,23 +76,20 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 			continue
 		}
 		closed = append(closed, t)
-		if len(t.Links) > 0 {
-			reasons[t.ID] = "has links"
-			continue
-		}
 		deletable[t.ID] = true
 	}
 
 	// Drop candidates referenced by a ticket that survives this run, repeating
 	// until the set stops shrinking. Candidates that only reference each other
-	// (including dependency cycles) survive the loop and are deleted together.
+	// (including dependency cycles and mutual links) survive the loop and are
+	// deleted together.
 	for changed := true; changed; {
 		changed = false
 		for _, t := range closed {
 			if !deletable[t.ID] {
 				continue
 			}
-			if reason, blocked := blockingReason(t.ID, dependants, children, deletable); blocked {
+			if reason, blocked := blockingReason(t, dependants, children, byID, deletable); blocked {
 				delete(deletable, t.ID)
 				reasons[t.ID] = reason
 				changed = true
@@ -110,16 +110,18 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 }
 
 // blockingReason reports why a candidate cannot be deleted, given the set of
-// tickets currently expected to be deleted in this run.
-func blockingReason(id string, dependants, children map[string][]*ticket.Ticket, deletable map[string]bool) (string, bool) {
-	for _, d := range dependants[id] {
+// tickets currently expected to be deleted in this run. Dependants, children,
+// and links are all treated transitively: a reference only blocks deletion if
+// the referencing or linked ticket is not itself deletable in this run.
+func blockingReason(t *ticket.Ticket, dependants, children map[string][]*ticket.Ticket, byID map[string]*ticket.Ticket, deletable map[string]bool) (string, bool) {
+	for _, d := range dependants[t.ID] {
 		if !deletable[d.ID] {
 			return "has dependants", true
 		}
 	}
 
 	hasBlockedChild := false
-	for _, c := range children[id] {
+	for _, c := range children[t.ID] {
 		if deletable[c.ID] {
 			continue
 		}
@@ -130,6 +132,13 @@ func blockingReason(id string, dependants, children map[string][]*ticket.Ticket,
 	}
 	if hasBlockedChild {
 		return "has blocked children", true
+	}
+
+	for _, linkID := range t.Links {
+		linked, ok := byID[linkID]
+		if !ok || !deletable[linked.ID] {
+			return "has links", true
+		}
 	}
 
 	return "", false

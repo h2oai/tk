@@ -535,6 +535,116 @@ func TestCleanRefuseWithLinks(t *testing.T) {
 	})
 }
 
+// TestCleanTransitiveLinks - Links are resolved transitively, like deps/children
+func TestCleanTransitiveLinks(t *testing.T) {
+	t.Run("mutually linked closed tickets are deletable together", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Ticket A")
+		idA = strings.TrimSpace(idA)
+		idB, _ := ctx.exec("new", "Ticket B")
+		idB = strings.TrimSpace(idB)
+
+		ctx.exec("link", idA, idB)
+		ctx.exec("close", idA)
+		ctx.exec("close", idB)
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+
+		if !strings.Contains(output, "2 deletable") {
+			t.Errorf("expected '2 deletable', got: %s", output)
+		}
+		if !strings.Contains(output, "0 blocked") {
+			t.Errorf("expected '0 blocked', got: %s", output)
+		}
+
+		output, err = ctx.exec("clean", "--fix")
+		if err != nil {
+			t.Fatalf("clean --fix command error: %v", err)
+		}
+		if !strings.Contains(output, "Deleted 2 ticket(s)") {
+			t.Errorf("expected 'Deleted 2 ticket(s)', got: %s", output)
+		}
+
+		if _, err := ctx.store().Get(idA); err == nil {
+			t.Errorf("ticket %s should be deleted", idA)
+		}
+		if _, err := ctx.store().Get(idB); err == nil {
+			t.Errorf("ticket %s should be deleted", idB)
+		}
+	})
+
+	t.Run("mutually linked closed tickets with a dependency between them", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		// Matches the real-world case: A and B link to each other, and B
+		// also depends on A. Both are closed and otherwise unblocked.
+		idA, _ := ctx.exec("new", "Ticket A")
+		idA = strings.TrimSpace(idA)
+		idB, _ := ctx.exec("new", "Ticket B")
+		idB = strings.TrimSpace(idB)
+
+		ctx.exec("link", idA, idB)
+		ctx.exec("dep", idB, idA)
+		ctx.exec("close", idA)
+		ctx.exec("close", idB)
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+
+		if !strings.Contains(output, "2 deletable") {
+			t.Errorf("expected '2 deletable', got: %s", output)
+		}
+		if !strings.Contains(output, "0 blocked") {
+			t.Errorf("expected '0 blocked', got: %s", output)
+		}
+	})
+
+	t.Run("link to a closed-but-blocked ticket still blocks", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		// A links to B. B is closed but has a non-closed child C, so B is
+		// blocked on its own -- A should stay blocked too, since B is not
+		// actually being deleted this run.
+		idA, _ := ctx.exec("new", "Ticket A")
+		idA = strings.TrimSpace(idA)
+		idB, _ := ctx.exec("new", "Ticket B")
+		idB = strings.TrimSpace(idB)
+
+		ctx.exec("link", idA, idB)
+		ctx.exec("close", idA)
+		ctx.exec("close", idB)
+
+		ctx.exec("new", "--parent", idB, "Child of B")
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+
+		if !strings.Contains(output, "0 deletable") {
+			t.Errorf("expected '0 deletable', got: %s", output)
+		}
+		if !strings.Contains(output, "2 blocked") {
+			t.Errorf("expected '2 blocked', got: %s", output)
+		}
+		if !strings.Contains(output, idB+" [closed]") || !strings.Contains(output, "has non-closed children") {
+			t.Errorf("expected %s blocked with 'has non-closed children', got: %s", idB, output)
+		}
+		if !strings.Contains(output, idA+" [closed]") || !strings.Contains(output, "has links") {
+			t.Errorf("expected %s blocked with 'has links', got: %s", idA, output)
+		}
+	})
+}
+
 // TestCleanDryRunNoChanges - Verify dry-run doesn't delete anything
 func TestCleanDryRunNoChanges(t *testing.T) {
 	ctx, cleanup := setupTestCmd(t)
