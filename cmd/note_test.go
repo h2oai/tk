@@ -261,12 +261,12 @@ func TestAddNoteCommand(t *testing.T) {
 		}
 		id = strings.TrimSpace(id)
 
-		// Use partial ID
+		// Use partial ID (the verb-noun portion)
 		parts := strings.Split(id, "-")
-		if len(parts) != 2 {
+		if len(parts) != 3 {
 			t.Fatalf("unexpected ID format: %s", id)
 		}
-		partial := parts[1]
+		partial := strings.Join(parts[1:], "-")
 
 		// Add note with partial ID
 		output, err := ctx.exec("note", partial, "Partial ID note")

@@ -87,7 +87,7 @@ func TestShowCommand(t *testing.T) {
 		id = strings.TrimSpace(id)
 
 		// Use partial ID
-		partial := id[len(id)-4:]
+		partial := id[strings.Index(id, "-")+1:]
 
 		output, err := ctx.exec("show", partial)
 		if err != nil {

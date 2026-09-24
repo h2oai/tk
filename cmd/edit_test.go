@@ -48,12 +48,12 @@ func TestEditCommand(t *testing.T) {
 		}
 		id = strings.TrimSpace(id)
 
-		// Use partial ID (last 4 chars of hash)
+		// Use partial ID (the verb-noun portion)
 		parts := strings.Split(id, "-")
-		if len(parts) != 2 {
+		if len(parts) != 3 {
 			t.Fatalf("unexpected ID format: %s", id)
 		}
-		partial := parts[1] // Just the hash part
+		partial := strings.Join(parts[1:], "-") // Just the verb-noun part
 
 		// Path resolution with partial ID should work
 		actualPath, err := ctx.store().Path(partial)

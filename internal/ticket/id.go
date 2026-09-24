@@ -1,22 +1,21 @@
 package ticket
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 	"unicode"
-
-	gonanoid "github.com/matoous/go-nanoid/v2"
 )
 
 // GenerateID generates a new ticket ID based on the current directory name
-// and a 4-character nanoid using cryptographic randomness for uniqueness.
-// Format: {prefix}-{4-char-alphanumeric}
+// and a word pair (adjective-noun) chosen with cryptographic randomness.
+// Format: {prefix}-{adjective}-{noun}, e.g. "g-baking-badger".
 // The prefix is extracted from the directory name by taking the first letter
 // of each hyphen/underscore-separated segment, or the first 3 chars as fallback.
-// The nanoid uses lowercase alphabetic characters (a-z), providing
-// 26^4 = 456,976 possible IDs per prefix.
+// The word pair is drawn from the nouns and adjectives lists in words.go, giving
+// len(adjectives) * len(nouns) possible IDs per prefix.
 func GenerateID(cwd string) string {
 	dirName := filepath.Base(cwd)
 
@@ -48,13 +47,26 @@ func GenerateID(cwd string) string {
 		}
 	}
 
-	// 4-char nanoid with lowercase alphabetic charset (a-z)
-	alphabet := "abcdefghijklmnopqrstuvwxyz"
-	hashStr, err := gonanoid.Generate(alphabet, 4)
-	if err != nil {
-		// Fallback to timestamp-based (extremely unlikely)
-		hashStr = fmt.Sprintf("%04d", time.Now().UnixNano()%10000)
-	}
+	return fmt.Sprintf("%s-%s-%s", strings.ToLower(prefix), randomAdjective(), randomNoun())
+}
 
-	return fmt.Sprintf("%s-%s", strings.ToLower(prefix), hashStr)
+// randomAdjective returns a random adjective from the adjectives list.
+func randomAdjective() string {
+	return randomWord(adjectives)
+}
+
+// randomNoun returns a random noun from the nouns list.
+func randomNoun() string {
+	return randomWord(nouns)
+}
+
+// randomWord picks a random word using crypto/rand.
+func randomWord(words []string) string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback to first word (extremely unlikely)
+		return words[0]
+	}
+	n := binary.BigEndian.Uint32(b[:])
+	return words[n%uint32(len(words))]
 }

@@ -36,7 +36,7 @@ go run main.go [command]
 
 **Ticket Storage**: Tickets are markdown files (`.tickets/{id}.md`) with YAML frontmatter containing metadata and markdown body containing title and description. The frontmatter includes fields like `id`, `status`, `deps`, `links`, `created`, `type`, `priority`, `assignee`, `external-ref`, and `parent`.
 
-**ID Generation**: Ticket IDs are generated from the current directory name using `internal/ticket/id.go:GenerateID()`. The prefix is derived by taking the first letter of each hyphen/underscore-separated segment, followed by a 4-character nanoid using lowercase alphanumeric characters (a-z0-9) for uniqueness (e.g., `gotk` directory → `g-m4k2`). The nanoid provides 36^4 = 1,679,616 possible IDs per prefix with cryptographic randomness.
+**ID Generation**: Ticket IDs are generated from the current directory name using `internal/ticket/id.go:GenerateID()`. The prefix is derived by taking the first letter of each hyphen/underscore-separated segment, followed by a adjective-noun word pair (e.g., `gotk` directory → `g-honking-glacier`). Words are drawn from the lists in `internal/ticket/words.go` (mechanically converted from a TypeScript source, adjectives removed) using crypto/rand for selection.
 
 **Partial ID Matching**: Throughout the system, users can provide partial IDs (e.g., `5c4`) that match any ticket ID containing that substring. Resolution happens in `internal/ticket/resolver.go:ResolveID()` which first tries exact match, then partial match. Returns an error if zero or multiple matches are found.
 

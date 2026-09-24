@@ -119,11 +119,11 @@ func TestStatusCommand(t *testing.T) {
 
 		id := createTestTicket(ctx, t, "Test Ticket", ticket.StatusOpen)
 
-		// Use last 4 characters as partial ID
-		if len(id) < 4 {
+		// Use the verb-noun portion as partial ID
+		if len(id) < 5 {
 			t.Skip("ID too short for partial matching")
 		}
-		partial := id[len(id)-4:]
+		partial := id[strings.Index(id, "-")+1:]
 
 		_, err := ctx.exec("status", partial, "in_progress")
 		if err != nil {
@@ -228,10 +228,10 @@ func TestStartCommand(t *testing.T) {
 
 		id := createTestTicket(ctx, t, "Test Ticket", ticket.StatusOpen)
 
-		if len(id) < 4 {
+		if len(id) < 5 {
 			t.Skip("ID too short for partial matching")
 		}
-		partial := id[len(id)-4:]
+		partial := id[strings.Index(id, "-")+1:]
 
 		_, err := ctx.exec("start", partial)
 		if err != nil {
@@ -334,10 +334,10 @@ func TestCloseCommand(t *testing.T) {
 
 		id := createTestTicket(ctx, t, "Test Ticket", ticket.StatusOpen)
 
-		if len(id) < 4 {
+		if len(id) < 5 {
 			t.Skip("ID too short for partial matching")
 		}
-		partial := id[len(id)-4:]
+		partial := id[strings.Index(id, "-")+1:]
 
 		_, err := ctx.exec("close", partial)
 		if err != nil {
@@ -441,10 +441,10 @@ func TestReopenCommand(t *testing.T) {
 
 		id := createTestTicket(ctx, t, "Test Ticket", ticket.StatusClosed)
 
-		if len(id) < 4 {
+		if len(id) < 5 {
 			t.Skip("ID too short for partial matching")
 		}
-		partial := id[len(id)-4:]
+		partial := id[strings.Index(id, "-")+1:]
 
 		_, err := ctx.exec("reopen", partial)
 		if err != nil {

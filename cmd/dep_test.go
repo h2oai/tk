@@ -119,9 +119,9 @@ func TestDepCommand(t *testing.T) {
 		id2, _ := ctx.exec("new", "Ticket 2")
 		id2 = strings.TrimSpace(id2)
 
-		// Use partial IDs (last 4 chars of hash)
-		partial1 := id1[len(id1)-4:]
-		partial2 := id2[len(id2)-4:]
+		// Use partial IDs (the verb-noun portion)
+		partial1 := id1[strings.Index(id1, "-")+1:]
+		partial2 := id2[strings.Index(id2, "-")+1:]
 
 		// Add dependency with partial IDs
 		output, err := ctx.exec("dep", partial1, partial2)
@@ -297,8 +297,8 @@ func TestUndepCommand(t *testing.T) {
 		ctx.exec("dep", id1, id2)
 
 		// Use partial IDs to remove
-		partial1 := id1[len(id1)-4:]
-		partial2 := id2[len(id2)-4:]
+		partial1 := id1[strings.Index(id1, "-")+1:]
+		partial2 := id2[strings.Index(id2, "-")+1:]
 
 		output, err := ctx.exec("undep", partial1, partial2)
 		if err != nil {
@@ -488,7 +488,7 @@ func TestDepTreeCommand(t *testing.T) {
 		id = strings.TrimSpace(id)
 
 		// Use partial ID
-		partial := id[len(id)-4:]
+		partial := id[strings.Index(id, "-")+1:]
 
 		output, err := ctx.exec("dep", "tree", partial)
 		if err != nil {

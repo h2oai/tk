@@ -97,8 +97,8 @@ func TestLinkCommand(t *testing.T) {
 		idB = strings.TrimSpace(idB)
 
 		// Use partial IDs
-		partialA := idA[len(idA)-4:]
-		partialB := idB[len(idB)-4:]
+		partialA := idA[strings.Index(idA, "-")+1:]
+		partialB := idB[strings.Index(idB, "-")+1:]
 
 		// Link with partial IDs
 		output, err := ctx.exec("link", partialA, partialB)
@@ -401,8 +401,8 @@ func TestUnlinkCommand(t *testing.T) {
 		ctx.exec("link", idA, idB)
 
 		// Use partial IDs to unlink
-		partialA := idA[len(idA)-4:]
-		partialB := idB[len(idB)-4:]
+		partialA := idA[strings.Index(idA, "-")+1:]
+		partialB := idB[strings.Index(idB, "-")+1:]
 
 		output, err := ctx.exec("unlink", partialA, partialB)
 		if err != nil {

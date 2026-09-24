@@ -61,8 +61,8 @@ func TestRmCommand(t *testing.T) {
 		id, _ := ctx.exec("new", "Test ticket")
 		id = strings.TrimSpace(id)
 
-		// Use partial ID (last 4 chars)
-		partial := id[len(id)-4:]
+		// Use partial ID (the verb-noun portion)
+		partial := id[strings.Index(id, "-")+1:]
 
 		output, err := ctx.exec("rm", partial)
 		if err != nil {
