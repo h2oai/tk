@@ -31,6 +31,8 @@ tk ls --status=open   # List all open tickets
 ### Creating & Updating
 
 - `tk new "Ticket title"` - Create a new ticket (defaults to status: open, type: task, priority: 2)
+  - `--id custom-id` - Use an explicit ticket ID instead of the auto-generated one
+    (lowercase letters, digits, `-` and `_` only; fails if the ID already exists)
   - `--type=bug|feature|task|epic|chore` - Ticket type
   - `-p, --priority 0-4` - Priority (0=critical, 2=medium, 4=backlog)
   - `-d, --description "..."` - Description text
@@ -74,9 +76,15 @@ tk close <id>         # Mark complete (can provide full or partial ID)
 
 ### Creating dependent tickets:
 ```bash
-tk new "Implement feature X" --type=feature
-tk new "Write tests for X" --type=task --parent=<feature-id>
-tk dep <test-id> <feature-id>  # Tests depend on Feature (Feature blocks tests)
+# Auto-generated IDs: capture the output and reuse the variables
+feature=$(tk new "Implement feature X" --type=feature)
+test=$(tk new "Write tests for X" --type=task --parent="$feature")
+tk dep "$test" "$feature"  # tests depend on feature
+
+# Or choose your own human-readable IDs up front
+tk new "Implement feature X" --type=feature --id feat-auth-login
+tk new "Write tests for X" --type=task --parent=feat-auth-login --id feat-auth-tests
+tk dep feat-auth-tests feat-auth-login  # tests depend on feature
 ```
 
 ### Working with blocked tickets:

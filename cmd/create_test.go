@@ -26,6 +26,7 @@ func setupTestCmd(t *testing.T) (*testContext, func()) {
 
 	cleanup := func() {
 		// Reset flags to defaults
+		newID = ""
 		newDescription = ""
 		newDesign = ""
 		newAcceptance = ""
@@ -364,6 +365,83 @@ func TestNewCommand(t *testing.T) {
 
 		if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
 			t.Errorf("ticket file not created at expected path: %s", expectedPath)
+		}
+	})
+}
+
+// TestNewCommand_WithID tests the --id flag
+func TestNewCommand_WithID(t *testing.T) {
+	t.Run("explicit id is used", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		output, err := ctx.exec("new", "Custom ID Ticket", "--id", "custom-abc123")
+		if err != nil {
+			t.Fatalf("new command error: %v", err)
+		}
+
+		id := strings.TrimSpace(output)
+		if id != "custom-abc123" {
+			t.Errorf("id = %q, want %q", id, "custom-abc123")
+		}
+
+		t2, err := ctx.store().Get("custom-abc123")
+		if err != nil {
+			t.Fatalf("failed to retrieve ticket: %v", err)
+		}
+		if t2.ID != "custom-abc123" {
+			t.Errorf("ticket ID = %q, want %q", t2.ID, "custom-abc123")
+		}
+	})
+
+	t.Run("duplicate id is rejected", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		if _, err := ctx.exec("new", "First", "--id", "dupe-id"); err != nil {
+			t.Fatalf("first new error: %v", err)
+		}
+
+		_, err := ctx.exec("new", "Second", "--id", "dupe-id")
+		if err == nil {
+			t.Fatal("expected collision error, got nil")
+		}
+		if !strings.Contains(err.Error(), "already exists") {
+			t.Errorf("error should mention existing ID, got: %v", err)
+		}
+	})
+
+	t.Run("invalid ids are rejected", func(t *testing.T) {
+		cases := map[string]string{
+			"uppercase":     "Custom-ID",
+			"space":         "custom id",
+			"path traverse": "../evil",
+			"slash":         "a/b",
+			"empty":         " ",
+		}
+		for name, value := range cases {
+			t.Run(name, func(t *testing.T) {
+				ctx, cleanup := setupTestCmd(t)
+				defer cleanup()
+
+				_, err := ctx.exec("new", "Test", "--id", value)
+				if err == nil {
+					t.Fatalf("expected error for id %q, got nil", value)
+				}
+			})
+		}
+	})
+
+	t.Run("no id flag still auto-generates", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		output, err := ctx.exec("new", "Auto Ticket")
+		if err != nil {
+			t.Fatalf("new command error: %v", err)
+		}
+		if strings.TrimSpace(output) == "" {
+			t.Error("expected auto-generated id")
 		}
 	})
 }
