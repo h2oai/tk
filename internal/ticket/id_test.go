@@ -35,14 +35,14 @@ func TestPrefixExtraction(t *testing.T) {
 		dirName        string
 		expectedPrefix string // prefix part only, before the word pair
 	}{
-		{"single segment", "/path/to/myproject", "m"},
+		{"single segment", "/path/to/myproject", "myp"},
 		{"hyphenated", "/path/to/my-ticket-keeper", "mtk"},
 		{"underscored", "/path/to/my_ticket_keeper", "mtk"},
 		{"mixed hyphen and underscore", "/path/to/my-ticket_keeper", "mtk"},
 		{"single char", "/path/to/a", "a"},
-		{"numeric start", "/path/to/123project", "1"},
-		{"three segments", "/path/to/go-tk", "gt"},
-		{"gotk", "/path/to/gotk", "g"},
+		{"numeric start", "/path/to/123project", "123"},
+		{"three segments", "/path/to/go-tk", "got"},
+		{"gotk", "/path/to/gotk", "got"},
 	}
 
 	for _, tt := range tests {
@@ -125,16 +125,16 @@ func TestPrefixExtractedCorrectly(t *testing.T) {
 		dirName        string
 		expectedPrefix string
 	}{
-		{"single word lowercase", "/path/to/myproject", "m"},
-		{"single word uppercase", "/path/to/MyProject", "m"}, // Expecting lowercase
-		{"two words hyphen", "/path/to/my-project", "mp"},
+		{"single word lowercase", "/path/to/myproject", "myp"},
+		{"single word uppercase", "/path/to/MyProject", "myp"}, // Expecting lowercase
+		{"two words hyphen", "/path/to/my-project", "myp"},
 		{"three words hyphen", "/path/to/my-new-project", "mnp"},
-		{"two words underscore", "/path/to/my_project", "mp"},
+		{"two words underscore", "/path/to/my_project", "myp"},
 		{"three words underscore", "/path/to/my_new_project", "mnp"},
 		{"mixed separators", "/path/to/my-new_project", "mnp"},
 		{"single letter", "/path/to/x", "x"},
-		{"numbers", "/path/to/123", "1"},
-		{"word with numbers", "/path/to/proj123", "p"},
+		{"numbers", "/path/to/123", "123"},
+		{"word with numbers", "/path/to/proj123", "pro"},
 	}
 
 	for _, tt := range tests {

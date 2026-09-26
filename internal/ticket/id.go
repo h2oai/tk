@@ -11,9 +11,11 @@ import (
 
 // GenerateID generates a new ticket ID based on the current directory name
 // and a word pair (adjective-noun) chosen with cryptographic randomness.
-// Format: {prefix}-{adjective}-{noun}, e.g. "g-baking-badger".
+// Format: {prefix}-{adjective}-{noun}, e.g. "got-baking-badger".
 // The prefix is extracted from the directory name by taking the first letter
-// of each hyphen/underscore-separated segment, or the first 3 chars as fallback.
+// of each hyphen/underscore-separated segment; if that yields fewer than 3
+// characters, the first 3 alphanumeric characters of the directory name are
+// used instead (so separators never leak into the prefix).
 // The word pair is drawn from the nouns and adjectives lists in words.go, giving
 // len(adjectives) * len(nouns) possible IDs per prefix.
 func GenerateID(cwd string) string {
@@ -37,17 +39,34 @@ func GenerateID(cwd string) string {
 		}
 	}
 
-	// Fallback to first 3 chars if no segments produced a prefix
-	if prefix == "" {
-		runes := []rune(dirName)
-		if len(runes) > 3 {
-			prefix = string(runes[:3])
-		} else {
-			prefix = dirName
-		}
+	// Fallback to the first 3 alphanumeric characters of the dir name if fewer
+	// than 3 prefix characters were produced, so separators never leak into the
+	// prefix (e.g. "go-tk" -> "got", not "go-").
+	if len([]rune(prefix)) < 3 {
+		prefix = firstAlphanumeric(dirName, 3)
 	}
 
 	return fmt.Sprintf("%s-%s-%s", strings.ToLower(prefix), randomAdjective(), randomNoun())
+}
+
+// firstAlphanumeric returns up to n alphanumeric runes from s, ignoring any
+// other characters. If s contains no alphanumeric runes, s is returned as-is.
+func firstAlphanumeric(s string, n int) string {
+	var b strings.Builder
+	count := 0
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			count++
+			if count >= n {
+				break
+			}
+		}
+	}
+	if b.Len() == 0 {
+		return s
+	}
+	return b.String()
 }
 
 // randomAdjective returns a random adjective from the adjectives list.
