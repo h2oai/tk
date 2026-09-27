@@ -3,29 +3,20 @@ package ticket
 import (
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"testing"
 )
 
-// containsWord reports whether words contains target, case-insensitively
-// (the source adjectives list mixes capitalization).
-func containsWord(words []string, target string) bool {
-	return slices.ContainsFunc(words, func(w string) bool {
-		return strings.EqualFold(w, target)
-	})
-}
-
 // 1.2 ID Generation Tests
 
-// splitID splits an ID into its prefix segments, adjective, and noun.
-// Format: {prefix}-{adjective}-{noun}
-func splitID(id string) (prefix string, adjective string, noun string) {
-	parts := strings.Split(id, "-")
-	if len(parts) < 3 {
-		return "", "", ""
+// splitID splits an ID into its prefix and pronounceable suffix.
+// Format: {prefix}-{suffix}
+func splitID(id string) (prefix string, suffix string) {
+	idx := strings.LastIndex(id, "-")
+	if idx < 0 {
+		return "", ""
 	}
-	return strings.Join(parts[:len(parts)-2], "-"), parts[len(parts)-2], parts[len(parts)-1]
+	return id[:idx], id[idx+1:]
 }
 
 // TestPrefixExtraction tests prefix extraction from various directory names
@@ -33,7 +24,7 @@ func TestPrefixExtraction(t *testing.T) {
 	tests := []struct {
 		name           string
 		dirName        string
-		expectedPrefix string // prefix part only, before the word pair
+		expectedPrefix string // prefix part only, before the suffix
 	}{
 		{"single segment", "/path/to/myproject", "myp"},
 		{"hyphenated", "/path/to/my-ticket-keeper", "mtk"},
@@ -48,9 +39,9 @@ func TestPrefixExtraction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			id := GenerateID(tt.dirName)
-			prefix, _, _ := splitID(id)
-			if prefix == "" {
-				t.Fatalf("Expected ID format {prefix}-{adjective}-{noun}, got %q", id)
+			prefix, suffix := splitID(id)
+			if prefix == "" || suffix == "" {
+				t.Fatalf("Expected ID format {prefix}-{suffix}, got %q", id)
 			}
 			if prefix != tt.expectedPrefix {
 				t.Errorf("GenerateID(%q) prefix = %q, expected %q (full ID: %s)",
@@ -60,9 +51,9 @@ func TestPrefixExtraction(t *testing.T) {
 	}
 }
 
-// TestWordPairGeneration tests that the word pair portion of the ID is
-// correctly formatted and drawn from the nouns and adjectives lists
-func TestWordPairGeneration(t *testing.T) {
+// TestPronounceableSuffixGeneration tests that the suffix portion of the ID
+// is correctly formatted as a consonant-vowel-consonant-vowel-consonant string
+func TestPronounceableSuffixGeneration(t *testing.T) {
 	tests := []struct {
 		name    string
 		dirName string
@@ -71,20 +62,18 @@ func TestWordPairGeneration(t *testing.T) {
 		{"complex", "/path/to/my-complex-project_name"},
 	}
 
+	suffixPattern := regexp.MustCompile(`^[` + consonants + `][` + vowels + `][` + consonants + `][` + vowels + `][` + consonants + `]$`)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			id := GenerateID(tt.dirName)
-			_, adjective, noun := splitID(id)
-			if adjective == "" || noun == "" {
-				t.Fatalf("Expected ID format {prefix}-{adjective}-{noun}, got %q", id)
+			_, suffix := splitID(id)
+			if suffix == "" {
+				t.Fatalf("Expected ID format {prefix}-{suffix}, got %q", id)
 			}
 
-			// Word pair should come from the adjectives and nouns lists
-			if !containsWord(adjectives, adjective) {
-				t.Errorf("Word %q should be in the adjectives list (ID: %s)", adjective, id)
-			}
-			if !slices.Contains(nouns, noun) {
-				t.Errorf("Word %q should be in the nouns list (ID: %s)", noun, id)
+			if !suffixPattern.MatchString(suffix) {
+				t.Errorf("Suffix %q should follow the consonant-vowel-consonant-vowel-consonant pattern (ID: %s)", suffix, id)
 			}
 		})
 	}
@@ -104,15 +93,10 @@ func TestFullIDFormat(t *testing.T) {
 		t.Run(filepath.Base(tt.dirName), func(t *testing.T) {
 			id := GenerateID(tt.dirName)
 
-			// Should match pattern: {prefix}-{adjective}-{noun}
-			pattern := regexp.MustCompile(`^[a-z0-9]+-[a-z]+-[a-z]+$`)
+			// Should match pattern: {prefix}-{suffix}
+			pattern := regexp.MustCompile(`^[a-z0-9]+-[a-z]{5}$`)
 			if !pattern.MatchString(id) {
-				t.Errorf("ID %q does not match expected format {prefix}-{adjective}-{noun}", id)
-			}
-
-			// Should contain exactly two hyphens separating prefix, adjective, and noun
-			if strings.Count(id, "-") < 2 {
-				t.Errorf("ID %q should contain hyphen separators", id)
+				t.Errorf("ID %q does not match expected format {prefix}-{suffix}", id)
 			}
 		})
 	}
@@ -140,7 +124,7 @@ func TestPrefixExtractedCorrectly(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			id := GenerateID(tt.dirName)
-			prefix, _, _ := splitID(id)
+			prefix, _ := splitID(id)
 
 			if prefix != tt.expectedPrefix {
 				t.Errorf("GenerateID(%q) prefix = %q, expected %q",
@@ -150,20 +134,21 @@ func TestPrefixExtractedCorrectly(t *testing.T) {
 	}
 }
 
-// TestWordPairAppendedCorrectly verifies the word pair is properly appended
-func TestWordPairAppendedCorrectly(t *testing.T) {
+// TestSuffixAppendedCorrectly verifies the suffix is properly appended
+func TestSuffixAppendedCorrectly(t *testing.T) {
 	dirName := "/path/to/myproject"
 	id := GenerateID(dirName)
 
-	parts := strings.Split(id, "-")
-	if len(parts) < 3 {
-		t.Fatalf("ID should have at least prefix, adjective, and noun parts: %q", id)
+	prefix, suffix := splitID(id)
+	if prefix == "" || suffix == "" {
+		t.Fatalf("ID should have both a prefix and a suffix part: %q", id)
 	}
 
-	// Verify word pair is at the end
-	suffix := strings.Join(parts[len(parts)-2:], "-")
 	if !strings.HasSuffix(id, suffix) {
-		t.Errorf("ID should end with word pair, ID=%q, word pair=%q", id, suffix)
+		t.Errorf("ID should end with suffix, ID=%q, suffix=%q", id, suffix)
+	}
+	if len(suffix) != 5 {
+		t.Errorf("Suffix should be 5 characters long, got %q (len %d)", suffix, len(suffix))
 	}
 }
 
@@ -199,6 +184,8 @@ func TestEmptyDirectoryNameFallback(t *testing.T) {
 func TestIDFormatConsistency(t *testing.T) {
 	dirName := "/path/to/my-test-project"
 
+	suffixPattern := regexp.MustCompile(`^[` + consonants + `][` + vowels + `][` + consonants + `][` + vowels + `][` + consonants + `]$`)
+
 	// Generate multiple IDs
 	ids := make([]string, 10)
 	for i := 0; i < 10; i++ {
@@ -208,8 +195,8 @@ func TestIDFormatConsistency(t *testing.T) {
 	// All should have the same prefix
 	var commonPrefix string
 	for i, id := range ids {
-		prefix, adjective, noun := splitID(id)
-		if prefix == "" || adjective == "" || noun == "" {
+		prefix, suffix := splitID(id)
+		if prefix == "" || suffix == "" {
 			t.Fatalf("Invalid ID format: %q", id)
 		}
 
@@ -221,12 +208,9 @@ func TestIDFormatConsistency(t *testing.T) {
 			}
 		}
 
-		// Word pair should come from the known word lists
-		if !containsWord(adjectives, adjective) {
-			t.Errorf("Word %q should be in the adjectives list: %q", adjective, id)
-		}
-		if !slices.Contains(nouns, noun) {
-			t.Errorf("Word %q should be in the nouns list: %q", noun, id)
+		// Suffix should follow the pronounceable pattern
+		if !suffixPattern.MatchString(suffix) {
+			t.Errorf("Suffix %q should follow the consonant-vowel-consonant-vowel-consonant pattern: %q", suffix, id)
 		}
 	}
 }
@@ -244,7 +228,7 @@ func TestPrefixLowercase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(filepath.Base(tt.dirName), func(t *testing.T) {
 			id := GenerateID(tt.dirName)
-			prefix, _, _ := splitID(id)
+			prefix, _ := splitID(id)
 
 			if prefix != strings.ToLower(prefix) {
 				t.Errorf("Prefix should be lowercase: got %q", prefix)
@@ -253,9 +237,8 @@ func TestPrefixLowercase(t *testing.T) {
 	}
 }
 
-// TestWordPairLowercase verifies that the word pair is lowercase (adjectives in
-// the source list are capitalized)
-func TestWordPairLowercase(t *testing.T) {
+// TestSuffixLowercase verifies that the suffix is lowercase
+func TestSuffixLowercase(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		id := GenerateID("/path/to/project")
 		if id != strings.ToLower(id) {

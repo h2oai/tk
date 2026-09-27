@@ -48,12 +48,12 @@ func TestEditCommand(t *testing.T) {
 		}
 		id = strings.TrimSpace(id)
 
-		// Use partial ID (the verb-noun portion)
+		// Use partial ID (the suffix portion)
 		parts := strings.Split(id, "-")
-		if len(parts) != 3 {
+		if len(parts) != 2 {
 			t.Fatalf("unexpected ID format: %s", id)
 		}
-		partial := strings.Join(parts[1:], "-") // Just the verb-noun part
+		partial := parts[1] // Just the suffix part
 
 		// Path resolution with partial ID should work
 		actualPath, err := ctx.store().Path(partial)

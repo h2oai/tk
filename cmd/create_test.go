@@ -340,14 +340,14 @@ func TestNewCommand(t *testing.T) {
 
 		id := strings.TrimSpace(output)
 
-		// ID should be in format: prefix-verb-noun
+		// ID should be in format: prefix-suffix
 		if !strings.Contains(id, "-") {
 			t.Errorf("ID format incorrect: %s", id)
 		}
 
 		parts := strings.Split(id, "-")
-		if len(parts) != 3 {
-			t.Errorf("ID should have format prefix-verb-noun, got: %s", id)
+		if len(parts) != 2 {
+			t.Errorf("ID should have format prefix-suffix, got: %s", id)
 		}
 	})
 

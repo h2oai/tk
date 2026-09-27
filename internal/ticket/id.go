@@ -2,22 +2,29 @@ package ticket
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"unicode"
 )
 
+// consonants and vowels used to build a pronounceable suffix. q and x are
+// excluded from consonants since they read awkwardly in the consonant-vowel
+// pattern used below (e.g. "qa", "xu").
+const (
+	consonants = "bcdfghjklmnprstvwyz"
+	vowels     = "aeiou"
+)
+
 // GenerateID generates a new ticket ID based on the current directory name
-// and a word pair (adjective-noun) chosen with cryptographic randomness.
-// Format: {prefix}-{adjective}-{noun}, e.g. "got-baking-badger".
+// and a short, pronounceable random suffix.
+// Format: {prefix}-{suffix}, e.g. "got-fanix".
 // The prefix is extracted from the directory name by taking the first letter
 // of each hyphen/underscore-separated segment; if that yields fewer than 3
 // characters, the first 3 alphanumeric characters of the directory name are
 // used instead (so separators never leak into the prefix).
-// The word pair is drawn from the nouns and adjectives lists in words.go, giving
-// len(adjectives) * len(nouns) possible IDs per prefix.
+// The suffix follows a consonant-vowel-consonant-vowel-consonant pattern,
+// giving len(consonants)^3 * len(vowels)^2 possible suffixes per prefix.
 func GenerateID(cwd string) string {
 	dirName := filepath.Base(cwd)
 
@@ -46,7 +53,7 @@ func GenerateID(cwd string) string {
 		prefix = firstAlphanumeric(dirName, 3)
 	}
 
-	return fmt.Sprintf("%s-%s-%s", strings.ToLower(prefix), randomAdjective(), randomNoun())
+	return fmt.Sprintf("%s-%s", strings.ToLower(prefix), randomPronounceable())
 }
 
 // firstAlphanumeric returns up to n alphanumeric runes from s, ignoring any
@@ -69,23 +76,24 @@ func firstAlphanumeric(s string, n int) string {
 	return b.String()
 }
 
-// randomAdjective returns a random adjective from the adjectives list.
-func randomAdjective() string {
-	return randomWord(adjectives)
-}
-
-// randomNoun returns a random noun from the nouns list.
-func randomNoun() string {
-	return randomWord(nouns)
-}
-
-// randomWord picks a random word using crypto/rand.
-func randomWord(words []string) string {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// Fallback to first word (extremely unlikely)
-		return words[0]
+// randomPronounceable generates a random 5-character string following a
+// consonant-vowel-consonant-vowel-consonant pattern (e.g. "fanix", "lovex"),
+// chosen with cryptographic randomness.
+func randomPronounceable() string {
+	pattern := [5]string{consonants, vowels, consonants, vowels, consonants}
+	var b strings.Builder
+	for _, set := range pattern {
+		b.WriteByte(set[randomIndex(len(set))])
 	}
-	n := binary.BigEndian.Uint32(b[:])
-	return words[n%uint32(len(words))]
+	return b.String()
+}
+
+// randomIndex returns a cryptographically random index in [0, n).
+func randomIndex(n int) int {
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback to first index (extremely unlikely)
+		return 0
+	}
+	return int(b[0]) % n
 }
