@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/lo5/tk/internal/ticket"
@@ -24,6 +26,10 @@ func init() {
 func runShow(cmd *cobra.Command, args []string) error {
 	target, err := store.Get(args[0])
 	if err != nil {
+		var ambiguous ticket.ErrAmbiguous
+		if errors.As(err, &ambiguous) {
+			return printAmbiguousMatches(ambiguous)
+		}
 		return err
 	}
 
@@ -121,6 +127,21 @@ func runShow(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+func printAmbiguousMatches(ambiguous ticket.ErrAmbiguous) error {
+	matches := append([]string(nil), ambiguous.Matches...)
+	sort.Strings(matches)
+
+	fmt.Printf("Multiple tickets found matching '%s':\n\n", ambiguous.ID)
+	for _, id := range matches {
+		t, err := store.Get(id)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("- %s [%s] %s\n", t.ID, t.Status, t.Title)
+	}
 	return nil
 }
 

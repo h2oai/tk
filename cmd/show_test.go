@@ -99,6 +99,42 @@ func TestShowCommand(t *testing.T) {
 			t.Error("should resolve partial ID to full ID")
 		}
 	})
+
+	t.Run("ambiguous partial ID lists all matches", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Ticket A")
+		idA = strings.TrimSpace(idA)
+
+		idB, _ := ctx.exec("new", "Ticket B")
+		idB = strings.TrimSpace(idB)
+
+		// Both tickets share the same generated prefix, so the prefix
+		// alone is an ambiguous partial ID.
+		prefix := idA[:strings.Index(idA, "-")]
+
+		output, err := ctx.exec("show", prefix)
+		if err != nil {
+			t.Fatalf("show with ambiguous ID should not error, got: %v", err)
+		}
+
+		if !strings.Contains(output, "Multiple tickets found matching") {
+			t.Errorf("output should explain the ID is ambiguous, got: %s", output)
+		}
+		if !strings.Contains(output, idA) {
+			t.Error("output should list first matching ticket")
+		}
+		if !strings.Contains(output, "Ticket A") {
+			t.Error("output should list first matching ticket's title")
+		}
+		if !strings.Contains(output, idB) {
+			t.Error("output should list second matching ticket")
+		}
+		if !strings.Contains(output, "Ticket B") {
+			t.Error("output should list second matching ticket's title")
+		}
+	})
 }
 
 // TestShowParentFieldInlineComment tests parent field with inline comment
