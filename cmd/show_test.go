@@ -3,6 +3,9 @@ package cmd
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/lo5/tk/internal/ticket"
 )
 
 // TestShowCommand tests the show command
@@ -104,11 +107,26 @@ func TestShowCommand(t *testing.T) {
 		ctx, cleanup := setupTestCmd(t)
 		defer cleanup()
 
-		idA, _ := ctx.exec("new", "Ticket A", "--id", "amb-one")
-		idA = strings.TrimSpace(idA)
+		mk := func(id, title string) {
+			t.Helper()
+			err := ctx.store().Create(&ticket.Ticket{
+				ID:       id,
+				Status:   ticket.StatusOpen,
+				Deps:     []string{},
+				Links:    []string{},
+				Created:  time.Now().UTC(),
+				Type:     ticket.TypeTask,
+				Priority: 2,
+				Title:    title,
+			})
+			if err != nil {
+				t.Fatalf("failed to create ticket %s: %v", id, err)
+			}
+		}
 
-		idB, _ := ctx.exec("new", "Ticket B", "--id", "amb-two")
-		idB = strings.TrimSpace(idB)
+		idA, idB := "amb-one", "amb-two"
+		mk(idA, "Ticket A")
+		mk(idB, "Ticket B")
 
 		// Both IDs contain "amb", so it is an ambiguous partial ID.
 		output, err := ctx.exec("show", "amb")
