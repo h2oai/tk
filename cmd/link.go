@@ -7,11 +7,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var linkAllPairs bool
+
 var linkCmd = &cobra.Command{
 	Use:   "link <id> <id> [id...]",
 	Short: "Link tickets together",
-	Long: `Link two or more tickets together (symmetric relationship).
-If A links to B, then B also links to A.`,
+	Long: `Link tickets together (symmetric relationship).
+If A links to B, then B also links to A.
+
+By default links form a star: the first ticket is linked to each of the
+remaining tickets, which are not linked to each other. Pass --all-pairs to
+instead link every pair of the supplied tickets (a full mesh).`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: runLink,
 }
@@ -26,6 +32,7 @@ var unlinkCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(linkCmd)
 	rootCmd.AddCommand(unlinkCmd)
+	linkCmd.Flags().BoolVar(&linkAllPairs, "all-pairs", false, "Link every pair of supplied tickets (full mesh) instead of a star")
 }
 
 func runLink(cmd *cobra.Command, args []string) error {
@@ -39,7 +46,26 @@ func runLink(cmd *cobra.Command, args []string) error {
 		ids = append(ids, t.ID)
 	}
 
-	// Add links to each ticket
+	// Determine which peers each ticket should be linked to.
+	peers := make([][]string, len(ids))
+	if linkAllPairs {
+		// Full mesh: every ticket links to every other ticket.
+		for i := range ids {
+			for j := range ids {
+				if i != j {
+					peers[i] = append(peers[i], ids[j])
+				}
+			}
+		}
+	} else {
+		// Star: the first ticket is the hub, linked to each of the rest.
+		for j := 1; j < len(ids); j++ {
+			peers[0] = append(peers[0], ids[j])
+			peers[j] = append(peers[j], ids[0])
+		}
+	}
+
+	// Add links to each ticket.
 	addedCount := 0
 	for i, id := range ids {
 		t, err := store.Get(id)
@@ -47,20 +73,17 @@ func runLink(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		// Build set of existing links
+		// Build set of existing links.
 		existingLinks := make(map[string]bool)
 		for _, l := range t.Links {
 			existingLinks[l] = true
 		}
 
-		// Add all other IDs as links
 		newLinks := t.Links
-		for j, otherID := range ids {
-			if i == j {
-				continue
-			}
+		for _, otherID := range peers[i] {
 			if !existingLinks[otherID] {
 				newLinks = append(newLinks, otherID)
+				existingLinks[otherID] = true
 				addedCount++
 			}
 		}

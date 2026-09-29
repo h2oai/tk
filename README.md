@@ -26,7 +26,7 @@ From this point on, you can simply clear the context and direct the agent to *fi
 - **File-based storage**: Tickets are `.md` files in `.tickets/`, editable in any text editor
 - **Git-friendly**: Store `.tickets/` in git (like `git-bug`) or `.gitignore` it and use as a local todo list
 - **Dependency tracking**: Define dependencies between tickets and visualize them as trees
-- **Cross-linking**: Link related tickets together for better context
+- **Cross-linking**: Link related tickets together (star by default, full mesh with `--all-pairs`)
 - **Partial ID matching**: Refer to tickets by any substring of their ID (e.g., `h42` matches `x-h42g`)
 - **jq-style queries**: Filter tickets with `jq` expressions
 
@@ -71,6 +71,15 @@ tk note h42 "Made progress on authentication"
 # Query tickets
 tk ls --status in_progress
 tk query '.status == "in_progress"'
+
+# Link related tickets (first ticket is the hub; others are linked to it)
+tk link h42 8a2 3f1
+
+# Link every pair of tickets (full mesh)
+tk link --all-pairs h42 8a2 3f1
+
+# Remove a link (symmetric)
+tk unlink h42 8a2
 
 # Clean up closed tickets
 tk clean              # Dry-run: show what would be deleted

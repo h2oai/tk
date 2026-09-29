@@ -120,7 +120,7 @@ func TestLinkCommand(t *testing.T) {
 
 // TestLinkCommandMultiWay tests multi-way linking
 func TestLinkCommandMultiWay(t *testing.T) {
-	t.Run("link three tickets", func(t *testing.T) {
+	t.Run("link three tickets as a star", func(t *testing.T) {
 		ctx, cleanup := setupTestCmd(t)
 		defer cleanup()
 
@@ -132,7 +132,7 @@ func TestLinkCommandMultiWay(t *testing.T) {
 		idC, _ := ctx.exec("new", "Ticket C")
 		idC = strings.TrimSpace(idC)
 
-		// Link all three together
+		// Link the hub (A) to B and C. B and C must NOT be linked to each other.
 		output, err := ctx.exec("link", idA, idB, idC)
 		if err != nil {
 			t.Fatalf("link three tickets error: %v", err)
@@ -165,42 +165,57 @@ func TestLinkCommandMultiWay(t *testing.T) {
 			t.Errorf("ticket A should be linked to both B and C")
 		}
 
-		// Verify B is linked to A and C
+		// Verify B is linked only to A (not to C)
 		ticketB, _ := ctx.store().Get(idB)
-		if len(ticketB.Links) != 2 {
-			t.Errorf("ticket B: expected 2 links, got %d", len(ticketB.Links))
-		}
-		hasA := false
-		hasC = false
-		for _, link := range ticketB.Links {
-			if link == idA {
-				hasA = true
-			}
-			if link == idC {
-				hasC = true
-			}
-		}
-		if !hasA || !hasC {
-			t.Errorf("ticket B should be linked to both A and C")
+		if len(ticketB.Links) != 1 || ticketB.Links[0] != idA {
+			t.Errorf("ticket B: expected only link to A, got %v", ticketB.Links)
 		}
 
-		// Verify C is linked to A and B
+		// Verify C is linked only to A (not to B)
 		ticketC, _ := ctx.store().Get(idC)
-		if len(ticketC.Links) != 2 {
-			t.Errorf("ticket C: expected 2 links, got %d", len(ticketC.Links))
+		if len(ticketC.Links) != 1 || ticketC.Links[0] != idA {
+			t.Errorf("ticket C: expected only link to A, got %v", ticketC.Links)
 		}
-		hasA = false
-		hasB = false
-		for _, link := range ticketC.Links {
-			if link == idA {
-				hasA = true
-			}
-			if link == idB {
-				hasB = true
-			}
+	})
+
+	t.Run("all-pairs links every pair", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Ticket A")
+		idA = strings.TrimSpace(idA)
+		idB, _ := ctx.exec("new", "Ticket B")
+		idB = strings.TrimSpace(idB)
+		idC, _ := ctx.exec("new", "Ticket C")
+		idC = strings.TrimSpace(idC)
+
+		// With --all-pairs every ticket links to every other ticket.
+		if _, err := ctx.exec("link", "--all-pairs", idA, idB, idC); err != nil {
+			t.Fatalf("link --all-pairs error: %v", err)
 		}
-		if !hasA || !hasB {
-			t.Errorf("ticket C should be linked to both A and B")
+
+		for _, tc := range []struct {
+			name string
+			id   string
+			want []string
+		}{
+			{"A", idA, []string{idB, idC}},
+			{"B", idB, []string{idA, idC}},
+			{"C", idC, []string{idA, idB}},
+		} {
+			ticket, _ := ctx.store().Get(tc.id)
+			got := make(map[string]bool, len(ticket.Links))
+			for _, l := range ticket.Links {
+				got[l] = true
+			}
+			if len(ticket.Links) != len(tc.want) {
+				t.Errorf("ticket %s: expected %d links, got %v", tc.name, len(tc.want), ticket.Links)
+			}
+			for _, w := range tc.want {
+				if !got[w] {
+					t.Errorf("ticket %s: missing link to %s (got %v)", tc.name, w, ticket.Links)
+				}
+			}
 		}
 	})
 

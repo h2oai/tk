@@ -46,7 +46,9 @@ tk ls --status=open   # List all open tickets
 - `tk note <id> "..."` - Append timestamped note to ticket
 - `tk dep <id> <dependency-id>` - Add dependency (first ticket depends on second)
 - `tk undep <id> <dependency-id>` - Remove dependency
-- `tk link <id> <id> [id...]` - Create symmetric link between tickets (bidirectional)
+- `tk link <hub-id> <id> [id...]` - Create symmetric links (bidirectional). By default the first ticket is the hub, linked to each of the rest (a star); the remaining tickets are not linked to each other
+- `tk link --all-pairs <id> <id> [id...]` - Link every pair of the supplied tickets (full mesh)
+- `tk unlink <id> <target-id>` - Remove the symmetric link between two tickets
 
 ### Querying & Filtering
 - `tk query` - Output all tickets as JSON, one per line
