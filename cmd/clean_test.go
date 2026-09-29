@@ -1253,3 +1253,163 @@ func TestCleanDependencyCycle(t *testing.T) {
 		}
 	}
 }
+
+// TestCleanAnchorSingleOpenAnchorOverChain - A closed chain pinned by one open
+// dependant is grouped under that single surviving anchor.
+func TestCleanAnchorSingleOpenAnchorOverChain(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Build a closed chain: ids[1] depends on ids[0], ids[2] on ids[1].
+	var ids []string
+	for i := 0; i < 3; i++ {
+		id, _ := ctx.exec("new", "Chain ticket")
+		id = strings.TrimSpace(id)
+		if i > 0 {
+			ctx.exec("dep", id, ids[i-1])
+		}
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		ctx.exec("close", id)
+	}
+
+	// An open ticket depends on the tail, pinning the whole chain.
+	idOpen, _ := ctx.exec("new", "Open anchor")
+	idOpen = strings.TrimSpace(idOpen)
+	ctx.exec("dep", idOpen, ids[2])
+
+	output, err := ctx.exec("clean")
+	if err != nil {
+		t.Fatalf("clean command error: %v", err)
+	}
+
+	if !strings.Contains(output, "3 blocked - 1 surviving anchor(s)") {
+		t.Errorf("expected '3 blocked - 1 surviving anchor(s)', got: %s", output)
+	}
+	if !strings.Contains(output, "Anchors:") {
+		t.Errorf("expected anchor section, got: %s", output)
+	}
+	if !strings.Contains(output, idOpen+" [open] blocks 3") {
+		t.Errorf("expected anchor line for %s, got: %s", idOpen, output)
+	}
+	// The anchor section must precede the per-ticket dump.
+	if ai, bi := strings.Index(output, "Anchors:"), strings.Index(output, "Blocked tickets:"); ai < 0 || bi < 0 || ai > bi {
+		t.Errorf("expected anchor section before blocked list, got: %s", output)
+	}
+	// Every blocked ticket is listed.
+	for _, id := range ids {
+		if !strings.Contains(output, id) {
+			t.Errorf("expected blocked ticket %s in output, got: %s", id, output)
+		}
+	}
+}
+
+// TestCleanAnchorMissingID - A dangling link names a [missing] anchor.
+func TestCleanAnchorMissingID(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	idA, _ := ctx.exec("new", "Closed with dangling link")
+	idA = strings.TrimSpace(idA)
+	idB, _ := ctx.exec("new", "Link target")
+	idB = strings.TrimSpace(idB)
+
+	ctx.exec("link", idA, idB)
+	ctx.exec("close", idA)
+	ctx.exec("close", idB)
+
+	// Remove the target's file so idA's link dangles.
+	if err := os.Remove(filepath.Join(ctx.ticketsDir, idB+".md")); err != nil {
+		t.Fatalf("failed to remove link target: %v", err)
+	}
+
+	output, err := ctx.exec("clean")
+	if err != nil {
+		t.Fatalf("clean command error: %v", err)
+	}
+
+	if !strings.Contains(output, "1 blocked - 1 surviving anchor(s)") {
+		t.Errorf("expected '1 blocked - 1 surviving anchor(s)', got: %s", output)
+	}
+	if !strings.Contains(output, idB+" [missing] blocks 1") {
+		t.Errorf("expected [missing] anchor %s, got: %s", idB, output)
+	}
+	if !strings.Contains(output, "(link -> "+idA+")") {
+		t.Errorf("expected 'link -> %s', got: %s", idA, output)
+	}
+}
+
+// TestCleanAnchorTwoDisjointAnchors - Blocks from independent anchors are
+// grouped and counted separately.
+func TestCleanAnchorTwoDisjointAnchors(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Anchor 1 blocks closed ticket A.
+	idA, _ := ctx.exec("new", "Closed A")
+	idA = strings.TrimSpace(idA)
+	ctx.exec("close", idA)
+	idOpen1, _ := ctx.exec("new", "Open anchor 1")
+	idOpen1 = strings.TrimSpace(idOpen1)
+	ctx.exec("dep", idOpen1, idA)
+
+	// Anchor 2 blocks closed ticket B.
+	idB, _ := ctx.exec("new", "Closed B")
+	idB = strings.TrimSpace(idB)
+	ctx.exec("close", idB)
+	idOpen2, _ := ctx.exec("new", "Open anchor 2")
+	idOpen2 = strings.TrimSpace(idOpen2)
+	ctx.exec("dep", idOpen2, idB)
+
+	output, err := ctx.exec("clean")
+	if err != nil {
+		t.Fatalf("clean command error: %v", err)
+	}
+
+	if !strings.Contains(output, "2 blocked - 2 surviving anchor(s)") {
+		t.Errorf("expected two anchors, got: %s", output)
+	}
+	if !strings.Contains(output, idOpen1+" [open] blocks 1") {
+		t.Errorf("expected anchor %s, got: %s", idOpen1, output)
+	}
+	if !strings.Contains(output, idOpen2+" [open] blocks 1") {
+		t.Errorf("expected anchor %s, got: %s", idOpen2, output)
+	}
+}
+
+// TestCleanAnchorCycleOnlyDeletable - A closed component with no non-candidate
+// reference stays deletable and never appears as blocked or anchored.
+func TestCleanAnchorCycleOnlyDeletable(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	idA, _ := ctx.exec("new", "Ticket A")
+	idA = strings.TrimSpace(idA)
+	idB, _ := ctx.exec("new", "Ticket B")
+	idB = strings.TrimSpace(idB)
+
+	ctx.exec("link", idA, idB)
+	ctx.exec("close", idA)
+	ctx.exec("close", idB)
+
+	output, err := ctx.exec("clean")
+	if err != nil {
+		t.Fatalf("clean command error: %v", err)
+	}
+
+	if !strings.Contains(output, "2 deletable") || !strings.Contains(output, "0 blocked") {
+		t.Errorf("expected cycle-only component to be deletable, got: %s", output)
+	}
+	if strings.Contains(output, "Anchors:") {
+		t.Errorf("cycle-only component must not produce anchors, got: %s", output)
+	}
+
+	output, err = ctx.exec("clean", "--fix")
+	if err != nil {
+		t.Fatalf("clean --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "Deleted 2 ticket(s)") {
+		t.Errorf("expected 'Deleted 2 ticket(s)', got: %s", output)
+	}
+}
