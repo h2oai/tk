@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -340,14 +341,9 @@ func TestNewCommand(t *testing.T) {
 
 		id := strings.TrimSpace(output)
 
-		// ID should be in format: prefix-suffix
-		if !strings.Contains(id, "-") {
-			t.Errorf("ID format incorrect: %s", id)
-		}
-
-		parts := strings.Split(id, "-")
-		if len(parts) != 2 {
-			t.Errorf("ID should have format prefix-suffix, got: %s", id)
+		// ID should be 5 lowercase letters plus a digit, with no prefix
+		if !regexp.MustCompile(`^[a-z]{5}[0-9]$`).MatchString(id) {
+			t.Errorf("ID should be 5 lowercase letters plus a digit with no prefix, got: %s", id)
 		}
 	})
 

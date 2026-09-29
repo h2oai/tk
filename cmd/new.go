@@ -90,14 +90,9 @@ func runNew(cmd *cobra.Command, args []string) error {
 		}
 		id = newID
 	} else {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("getting current directory: %w", err)
-		}
-
 		maxRetries := 10
 		for i := 0; i < maxRetries; i++ {
-			id = ticket.GenerateID(cwd)
+			id = ticket.GenerateID()
 			_, err := store.Get(id)
 			if err != nil {
 				// ID doesn't exist, we can use it

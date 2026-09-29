@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lo5/tk/internal/ticket"
 	"github.com/google/go-cmp/cmp"
+	"github.com/lo5/tk/internal/ticket"
 )
 
 // CreateTestStore creates a temporary store for testing
@@ -41,9 +41,8 @@ func CleanupTestStore(t *testing.T, tempDir string) {
 func CreateTestTicket(t *testing.T, store *ticket.FileStore, title string) string {
 	t.Helper()
 
-	cwd, _ := os.Getwd()
 	tk := &ticket.Ticket{
-		ID:       ticket.GenerateID(cwd),
+		ID:       ticket.GenerateID(),
 		Status:   ticket.StatusOpen,
 		Type:     ticket.TypeTask,
 		Priority: 2,
@@ -75,9 +74,8 @@ func CreateTestTickets(t *testing.T, store *ticket.FileStore, count int) []strin
 func CreateTestTicketWithOptions(t *testing.T, store *ticket.FileStore, opts TicketOptions) string {
 	t.Helper()
 
-	cwd, _ := os.Getwd()
 	tk := &ticket.Ticket{
-		ID:       ticket.GenerateID(cwd),
+		ID:       ticket.GenerateID(),
 		Status:   opts.Status,
 		Type:     opts.Type,
 		Priority: opts.Priority,

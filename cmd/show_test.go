@@ -104,17 +104,14 @@ func TestShowCommand(t *testing.T) {
 		ctx, cleanup := setupTestCmd(t)
 		defer cleanup()
 
-		idA, _ := ctx.exec("new", "Ticket A")
+		idA, _ := ctx.exec("new", "Ticket A", "--id", "amb-one")
 		idA = strings.TrimSpace(idA)
 
-		idB, _ := ctx.exec("new", "Ticket B")
+		idB, _ := ctx.exec("new", "Ticket B", "--id", "amb-two")
 		idB = strings.TrimSpace(idB)
 
-		// Both tickets share the same generated prefix, so the prefix
-		// alone is an ambiguous partial ID.
-		prefix := idA[:strings.Index(idA, "-")]
-
-		output, err := ctx.exec("show", prefix)
+		// Both IDs contain "amb", so it is an ambiguous partial ID.
+		output, err := ctx.exec("show", "amb")
 		if err != nil {
 			t.Fatalf("show with ambiguous ID should not error, got: %v", err)
 		}

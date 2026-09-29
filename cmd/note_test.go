@@ -261,12 +261,8 @@ func TestAddNoteCommand(t *testing.T) {
 		}
 		id = strings.TrimSpace(id)
 
-		// Use partial ID (the suffix portion)
-		parts := strings.Split(id, "-")
-		if len(parts) != 2 {
-			t.Fatalf("unexpected ID format: %s", id)
-		}
-		partial := parts[1]
+		// Use partial ID (the first few characters)
+		partial := id[:3]
 
 		// Add note with partial ID
 		output, err := ctx.exec("note", partial, "Partial ID note")
