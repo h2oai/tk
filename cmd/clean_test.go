@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -942,6 +944,325 @@ func TestCleanNoDanglingRefs(t *testing.T) {
 	_, err = ctx.store().Get(idA)
 	if err != nil {
 		t.Errorf("dependency target %s should exist: %v", idA, err)
+	}
+}
+
+// cleanPlanJSONTest mirrors the documented `tk clean --json` dry-run schema.
+type cleanPlanJSONTest struct {
+	Closed    int                   `json:"closed"`
+	Deletable int                   `json:"deletable"`
+	Blocked   int                   `json:"blocked"`
+	Anchors   []cleanAnchorJSONTest `json:"anchors"`
+	Tickets   []cleanTicketJSONTest `json:"tickets"`
+}
+
+type cleanAnchorJSONTest struct {
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	BlockedCount int    `json:"blocked_count"`
+}
+
+type cleanTicketJSONTest struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	Deletable bool   `json:"deletable"`
+	Reason    string `json:"reason"`
+	BlockedBy string `json:"blocked_by"`
+	Anchor    string `json:"anchor"`
+}
+
+// cleanFixJSONTest mirrors the documented `tk clean --json --fix` schema.
+type cleanFixJSONTest struct {
+	Deleted int                   `json:"deleted"`
+	Skipped int                   `json:"skipped"`
+	Errors  int                   `json:"errors"`
+	Results []cleanResultJSONTest `json:"results"`
+}
+
+type cleanResultJSONTest struct {
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+	Error   string `json:"error"`
+}
+
+// parseCleanPlan unmarshals and validates the shape of `tk clean --json`
+// output, failing the test on anything that is not parseable JSON.
+func parseCleanPlan(t *testing.T, output string) cleanPlanJSONTest {
+	t.Helper()
+	var plan cleanPlanJSONTest
+	if err := json.Unmarshal([]byte(output), &plan); err != nil {
+		t.Fatalf("clean --json output is not valid JSON: %v\n%s", err, output)
+	}
+	return plan
+}
+
+// TestCleanJSONPlan - --json emits the dry-run plan with counts, anchors, and
+// per-ticket entries, and no human prose.
+func TestCleanJSONPlan(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Deletable closed ticket.
+	idDeletable, _ := ctx.exec("new", "Deletable closed")
+	idDeletable = strings.TrimSpace(idDeletable)
+	ctx.exec("close", idDeletable)
+
+	// Closed ticket pinned by an open dependant.
+	idBlocked, _ := ctx.exec("new", "Blocked closed")
+	idBlocked = strings.TrimSpace(idBlocked)
+	ctx.exec("close", idBlocked)
+	idOpen, _ := ctx.exec("new", "Open anchor")
+	idOpen = strings.TrimSpace(idOpen)
+	ctx.exec("dep", idOpen, idBlocked)
+
+	output, err := ctx.exec("clean", "--json")
+	if err != nil {
+		t.Fatalf("clean --json command error: %v", err)
+	}
+
+	plan := parseCleanPlan(t, output)
+	if plan.Closed != 2 || plan.Deletable != 1 || plan.Blocked != 1 {
+		t.Errorf("counts = closed %d, deletable %d, blocked %d; want 2, 1, 1", plan.Closed, plan.Deletable, plan.Blocked)
+	}
+
+	if len(plan.Anchors) != 1 {
+		t.Fatalf("expected 1 anchor, got %d: %s", len(plan.Anchors), output)
+	}
+	if plan.Anchors[0].ID != idOpen || plan.Anchors[0].Status != "open" || plan.Anchors[0].BlockedCount != 1 {
+		t.Errorf("unexpected anchor: %+v", plan.Anchors[0])
+	}
+
+	if len(plan.Tickets) != 2 {
+		t.Fatalf("expected 2 ticket entries, got %d: %s", len(plan.Tickets), output)
+	}
+	byID := make(map[string]cleanTicketJSONTest, len(plan.Tickets))
+	for _, e := range plan.Tickets {
+		byID[e.ID] = e
+	}
+
+	blocked, ok := byID[idBlocked]
+	if !ok {
+		t.Fatalf("expected entry for blocked ticket %s: %s", idBlocked, output)
+	}
+	if blocked.Status != "closed" || blocked.Deletable {
+		t.Errorf("blocked entry = %+v; want closed and not deletable", blocked)
+	}
+	if blocked.Reason != "dependant" || blocked.BlockedBy != idOpen || blocked.Anchor != idOpen {
+		t.Errorf("blocked entry = %+v; want reason=dependant blocked_by=%s anchor=%s", blocked, idOpen, idOpen)
+	}
+
+	deletable, ok := byID[idDeletable]
+	if !ok {
+		t.Fatalf("expected entry for deletable ticket %s: %s", idDeletable, output)
+	}
+	if !deletable.Deletable || deletable.Status != "closed" {
+		t.Errorf("deletable entry = %+v; want closed and deletable", deletable)
+	}
+	if deletable.Reason != "" || deletable.BlockedBy != "" || deletable.Anchor != "" {
+		t.Errorf("deletable entry = %+v; want empty reason/blocked_by/anchor", deletable)
+	}
+
+	for _, prose := range []string{"Found ", "Run with --fix", "Blocked tickets:", "Anchors:", "Deleted:"} {
+		if strings.Contains(output, prose) {
+			t.Errorf("JSON output must not contain prose %q: %s", prose, output)
+		}
+	}
+}
+
+// TestCleanJSONMissingAnchor - a dangling link produces a [missing] anchor
+// with the normalized "link" reason.
+func TestCleanJSONMissingAnchor(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	idA, _ := ctx.exec("new", "Closed with dangling link")
+	idA = strings.TrimSpace(idA)
+	idB, _ := ctx.exec("new", "Link target")
+	idB = strings.TrimSpace(idB)
+	ctx.exec("link", idA, idB)
+	ctx.exec("close", idA)
+	ctx.exec("close", idB)
+
+	if err := os.Remove(filepath.Join(ctx.ticketsDir, idB+".md")); err != nil {
+		t.Fatalf("failed to remove link target: %v", err)
+	}
+
+	output, err := ctx.exec("clean", "--json")
+	if err != nil {
+		t.Fatalf("clean --json command error: %v", err)
+	}
+	plan := parseCleanPlan(t, output)
+
+	if len(plan.Anchors) != 1 || plan.Anchors[0].ID != idB || plan.Anchors[0].Status != "missing" {
+		t.Fatalf("expected one [missing] anchor %s, got %+v", idB, plan.Anchors)
+	}
+	entry := plan.Tickets[0]
+	if entry.Reason != "link" || entry.BlockedBy != idB || entry.Anchor != idB {
+		t.Errorf("entry = %+v; want reason=link blocked_by=anchor=%s", entry, idB)
+	}
+}
+
+// TestCleanJSONEmpty - --json still emits valid JSON when there is nothing to
+// clean.
+func TestCleanJSONEmpty(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	ctx.exec("new", "Open ticket")
+
+	output, err := ctx.exec("clean", "--json")
+	if err != nil {
+		t.Fatalf("clean --json command error: %v", err)
+	}
+	plan := parseCleanPlan(t, output)
+	if plan.Closed != 0 || plan.Deletable != 0 || plan.Blocked != 0 {
+		t.Errorf("counts = %+v; want all zero", plan)
+	}
+	if plan.Anchors == nil || plan.Tickets == nil {
+		t.Errorf("anchors and tickets must be present as arrays: %s", output)
+	}
+	if strings.Contains(output, "No closed tickets found") {
+		t.Errorf("JSON mode must not emit prose: %s", output)
+	}
+}
+
+// TestCleanJSONStableOrdering - repeated runs are byte-identical and the
+// arrays are ordered deterministically.
+func TestCleanJSONStableOrdering(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// A three-ticket closed chain pinned by one open anchor.
+	var ids []string
+	for i := 0; i < 3; i++ {
+		id, _ := ctx.exec("new", "Chain ticket")
+		id = strings.TrimSpace(id)
+		if i > 0 {
+			ctx.exec("dep", id, ids[i-1])
+		}
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		ctx.exec("close", id)
+	}
+	idOpen1, _ := ctx.exec("new", "Open anchor 1")
+	idOpen1 = strings.TrimSpace(idOpen1)
+	ctx.exec("dep", idOpen1, ids[2])
+
+	// A single closed ticket pinned by a second open anchor.
+	idSingle, _ := ctx.exec("new", "Single blocked")
+	idSingle = strings.TrimSpace(idSingle)
+	ctx.exec("close", idSingle)
+	idOpen2, _ := ctx.exec("new", "Open anchor 2")
+	idOpen2 = strings.TrimSpace(idOpen2)
+	ctx.exec("dep", idOpen2, idSingle)
+
+	first, err := ctx.exec("clean", "--json")
+	if err != nil {
+		t.Fatalf("clean --json command error: %v", err)
+	}
+	second, err := ctx.exec("clean", "--json")
+	if err != nil {
+		t.Fatalf("clean --json command error: %v", err)
+	}
+	if first != second {
+		t.Errorf("expected byte-identical output across runs\nfirst:  %s\nsecond: %s", first, second)
+	}
+
+	plan := parseCleanPlan(t, first)
+	if len(plan.Anchors) != 2 || plan.Anchors[0].ID != idOpen1 || plan.Anchors[0].BlockedCount != 3 || plan.Anchors[1].ID != idOpen2 {
+		t.Errorf("anchors not sorted by blocked_count desc: %+v", plan.Anchors)
+	}
+
+	gotIDs := make([]string, 0, len(plan.Tickets))
+	for _, e := range plan.Tickets {
+		gotIDs = append(gotIDs, e.ID)
+	}
+	wantIDs := append([]string(nil), gotIDs...)
+	sort.Strings(wantIDs)
+	if strings.Join(gotIDs, ",") != strings.Join(wantIDs, ",") {
+		t.Errorf("tickets not sorted by id: %v", gotIDs)
+	}
+}
+
+// TestCleanJSONFix - --json --fix deletes tickets and reports results instead
+// of the plan.
+func TestCleanJSONFix(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	var ids []string
+	for i := 0; i < 2; i++ {
+		id, _ := ctx.exec("new", "Deletable")
+		id = strings.TrimSpace(id)
+		ctx.exec("close", id)
+		ids = append(ids, id)
+	}
+
+	// One blocked closed ticket.
+	idBlocked, _ := ctx.exec("new", "Blocked")
+	idBlocked = strings.TrimSpace(idBlocked)
+	ctx.exec("close", idBlocked)
+	idOpen, _ := ctx.exec("new", "Open anchor")
+	idOpen = strings.TrimSpace(idOpen)
+	ctx.exec("dep", idOpen, idBlocked)
+
+	output, err := ctx.exec("clean", "--json", "--fix")
+	if err != nil {
+		t.Fatalf("clean --json --fix command error: %v", err)
+	}
+
+	var result cleanFixJSONTest
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("clean --json --fix output is not valid JSON: %v\n%s", err, output)
+	}
+	if result.Deleted != 2 || result.Skipped != 1 || result.Errors != 0 {
+		t.Errorf("result = %+v; want deleted 2, skipped 1, errors 0", result)
+	}
+	if len(result.Results) != 2 {
+		t.Fatalf("expected 2 results, got %d: %s", len(result.Results), output)
+	}
+	for _, r := range result.Results {
+		if !r.Deleted || r.Error != "" {
+			t.Errorf("result entry = %+v; want deleted with no error", r)
+		}
+	}
+
+	for _, prose := range []string{"Deleting closed tickets", "Deleted: ", "Run with --fix", "Found "} {
+		if strings.Contains(output, prose) {
+			t.Errorf("JSON output must not contain prose %q: %s", prose, output)
+		}
+	}
+
+	for _, id := range ids {
+		if _, err := ctx.store().Get(id); err == nil {
+			t.Errorf("ticket %s should be deleted", id)
+		}
+	}
+	if _, err := ctx.store().Get(idBlocked); err != nil {
+		t.Errorf("blocked ticket %s should survive: %v", idBlocked, err)
+	}
+}
+
+// TestCleanJSONFixEmpty - --json --fix with no deletable tickets still emits
+// valid JSON.
+func TestCleanJSONFixEmpty(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	output, err := ctx.exec("clean", "--json", "--fix")
+	if err != nil {
+		t.Fatalf("clean --json --fix command error: %v", err)
+	}
+	var result cleanFixJSONTest
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, output)
+	}
+	if result.Deleted != 0 || result.Skipped != 0 || result.Errors != 0 {
+		t.Errorf("result = %+v; want all zero", result)
+	}
+	if result.Results == nil {
+		t.Errorf("results must be present as an array: %s", output)
 	}
 }
 

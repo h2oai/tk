@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -29,13 +30,49 @@ dependencies.
 
 In dry-run mode, blocked tickets are grouped under the surviving non-candidate
 anchor (an open, in-progress, or missing ticket) responsible for the block, so
-a large cascade can be traced to the few references keeping it alive.`,
-	Args: cobra.NoArgs,
+a large cascade can be traced to the few references keeping it alive.
+
+With --json the result is emitted as JSON and nothing else. The dry-run schema
+is:
+
+  {
+    "closed":    <int>,   // total closed tickets considered
+    "deletable": <int>,   // closed tickets safe to delete
+    "blocked":   <int>,   // closed tickets kept in place
+    "anchors": [          // surviving non-candidates holding tickets back
+      {"id": <string>, "status": <string>, "blocked_count": <int>}
+    ],
+    "tickets": [          // one entry per closed ticket
+      {
+        "id": <string>,
+        "status": <string>,
+        "deletable": <bool>,
+        "reason": <string>,     // "dependant", "child", or "link"; empty if deletable
+        "blocked_by": <string>, // ID of the direct blocking reference; empty if deletable
+        "anchor": <string>      // root non-candidate ID; empty if deletable
+      }
+    ]
+  }
+
+With --json --fix the deletion results are emitted instead:
+
+  {
+    "deleted": <int>,   // tickets actually removed
+    "skipped": <int>,   // blocked tickets left in place
+    "errors":  <int>,   // deletions that failed
+    "results": [
+      {"id": <string>, "deleted": <bool>, "error": <string>} // error omitted when empty
+    ]
+  }
+
+Anchors are ordered by blocked_count (descending), then id. Entries are ordered
+by ticket id.`, Args: cobra.NoArgs,
 	RunE: runClean,
 }
 
 var cleanFix bool
 var cleanVerbose bool
+var cleanJSON bool
 
 // cleanBlockedCap is the maximum number of blocked tickets listed in the
 // human dry-run output before truncating. --verbose lifts the cap.
@@ -47,6 +84,8 @@ func init() {
 		"Actually delete closed tickets (default is dry-run)")
 	cleanCmd.Flags().BoolVarP(&cleanVerbose, "verbose", "v", false,
 		"Show the full blocked ticket list instead of the first 20")
+	cleanCmd.Flags().BoolVar(&cleanJSON, "json", false,
+		"Emit machine-readable JSON instead of human-readable text")
 }
 
 type cleanableTicket struct {
@@ -64,6 +103,9 @@ type cleanableTicket struct {
 	// ticket is blocked on its own; a transitive one is demoted only because
 	// a ticket it references was itself demoted.
 	direct bool
+	// blockedBy is the ID of the ticket whose direct reference demoted this
+	// ticket. Empty for deletable tickets.
+	blockedBy string
 }
 
 // blockEdge records the specific reference that demoted a candidate: the
@@ -155,6 +197,7 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 			ct.blocked = true
 			ct.reason = reasons[t.ID]
 			ct.relation = blockedBy[t.ID].relation
+			ct.blockedBy = blockedBy[t.ID].blockerID
 			ct.direct = !closedSet[blockedBy[t.ID].blockerID]
 			ct.anchor = findAnchor(t.ID, blockedBy, closedSet)
 		}
@@ -353,6 +396,115 @@ func printAnchors(anchors []cleanAnchor) {
 	}
 }
 
+// cleanPlanJSON is the documented top-level schema of `tk clean --json` in
+// dry-run mode. Counts describe the closed-ticket population; Anchors and
+// Tickets are emitted in deterministic order.
+type cleanPlanJSON struct {
+	Closed    int               `json:"closed"`
+	Deletable int               `json:"deletable"`
+	Blocked   int               `json:"blocked"`
+	Anchors   []cleanAnchorJSON `json:"anchors"`
+	Tickets   []cleanTicketJSON `json:"tickets"`
+}
+
+// cleanAnchorJSON is one surviving non-candidate and the number of blocked
+// tickets attributed to it. Status is the ticket status or "missing".
+type cleanAnchorJSON struct {
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	BlockedCount int    `json:"blocked_count"`
+}
+
+// cleanTicketJSON is one closed ticket. Reason, BlockedBy, and Anchor are
+// populated only for blocked tickets; deletable entries leave them empty.
+type cleanTicketJSON struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	Deletable bool   `json:"deletable"`
+	Reason    string `json:"reason"`
+	BlockedBy string `json:"blocked_by"`
+	Anchor    string `json:"anchor"`
+}
+
+// cleanFixJSON is the documented top-level schema of `tk clean --json --fix`.
+type cleanFixJSON struct {
+	Deleted int               `json:"deleted"`
+	Skipped int               `json:"skipped"`
+	Errors  int               `json:"errors"`
+	Results []cleanResultJSON `json:"results"`
+}
+
+// cleanResultJSON is one attempted deletion. Error is omitted when the
+// deletion succeeded.
+type cleanResultJSON struct {
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+	Error   string `json:"error,omitempty"`
+}
+
+// writeCleanJSON pretty-prints v as the sole output of a --json invocation.
+func writeCleanJSON(v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling clean JSON: %w", err)
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+// printCleanPlanJSON emits the dry-run plan. It writes no prose.
+func printCleanPlanJSON(cleanable, blocked []cleanableTicket, anchors []cleanAnchor) error {
+	plan := cleanPlanJSON{
+		Closed:    len(cleanable),
+		Deletable: len(cleanable) - len(blocked),
+		Blocked:   len(blocked),
+		Anchors:   make([]cleanAnchorJSON, 0, len(anchors)),
+		Tickets:   make([]cleanTicketJSON, 0, len(cleanable)),
+	}
+	for _, a := range anchors {
+		plan.Anchors = append(plan.Anchors, cleanAnchorJSON{
+			ID:           a.id,
+			Status:       a.status,
+			BlockedCount: a.count,
+		})
+	}
+	for _, ct := range cleanable {
+		entry := cleanTicketJSON{
+			ID:        ct.ticket.ID,
+			Status:    string(ct.ticket.Status),
+			Deletable: !ct.blocked,
+		}
+		if ct.blocked {
+			entry.Reason = normalizeRelation(ct.relation)
+			entry.BlockedBy = ct.blockedBy
+			entry.Anchor = ct.anchor
+		}
+		plan.Tickets = append(plan.Tickets, entry)
+	}
+	return writeCleanJSON(plan)
+}
+
+// printCleanFixJSON deletes the deletable tickets and emits the per-ticket
+// results instead of the plan. It writes no prose.
+func printCleanFixJSON(deletable, blocked []cleanableTicket) error {
+	result := cleanFixJSON{
+		Skipped: len(blocked),
+		Results: make([]cleanResultJSON, 0, len(deletable)),
+	}
+	for _, ct := range deletable {
+		entry := cleanResultJSON{ID: ct.ticket.ID}
+		if err := store.Delete(ct.ticket.ID); err != nil {
+			entry.Error = err.Error()
+			result.Errors++
+		} else {
+			entry.Deleted = true
+			result.Deleted++
+		}
+		result.Results = append(result.Results, entry)
+	}
+	return writeCleanJSON(result)
+}
+
 func runClean(cmd *cobra.Command, args []string) error {
 	// 1. Load all tickets
 	allTickets, err := store.List()
@@ -380,6 +532,10 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	// 4. Handle dry-run (default)
 	if !cleanFix {
+		if cleanJSON {
+			return printCleanPlanJSON(cleanable, blocked, anchors)
+		}
+
 		totalClosed := len(cleanable)
 		numDeletable := len(deletable)
 		numBlocked := len(blocked)
@@ -434,6 +590,10 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	// 5. Handle --fix mode (actual deletion)
+	if cleanJSON {
+		return printCleanFixJSON(deletable, blocked)
+	}
+
 	if len(deletable) == 0 {
 		if len(blocked) > 0 {
 			fmt.Printf("No deletable tickets. All %d closed ticket(s) are blocked.\n", len(blocked))
