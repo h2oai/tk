@@ -21,12 +21,23 @@ Use --fix to actually delete the tickets.
 Refuses deletion if a closed ticket:
   - Has dependants that are not themselves being deleted
   - Has children that are not themselves being deleted
-  - Has links to a ticket that is not itself being deleted
+
+Links are governed by --links:
+
+  --links=ignore  (default)  Links are informational; a link never blocks
+                             deletion, even to a ticket that survives.
+  --links=block              A link to a ticket that is not itself being
+                             deleted blocks deletion (the historical behavior).
+
+Dependants and children are always hard blockers, unaffected by --links. A
+link to an ID that does not exist (a dangling link) follows the active policy:
+ignored under --links=ignore and blocking under --links=block. clean never
+rewrites dangling references; use "tk prune" to remove them.
 
 Deletability is transitive: closed tickets that are only referenced (via
-dependants, children, or links) by other closed tickets being deleted in the
-same run are removed together, so one run clears an entire chain of closed
-dependencies.
+dependants or children, or via links under --links=block) by other closed
+tickets being deleted in the same run are removed together, so one run clears
+an entire chain of closed dependencies.
 
 In dry-run mode, blocked tickets are grouped under the surviving non-candidate
 anchor (an open, in-progress, or missing ticket) responsible for the block, so
@@ -48,6 +59,7 @@ is:
         "status": <string>,
         "deletable": <bool>,
         "reason": <string>,     // "dependant", "child", or "link"; empty if deletable
+                                // "link" appears only under --links=block
         "blocked_by": <string>, // ID of the direct blocking reference; empty if deletable
         "anchor": <string>      // root non-candidate ID; empty if deletable
       }
@@ -73,6 +85,7 @@ by ticket id.`, Args: cobra.NoArgs,
 var cleanFix bool
 var cleanVerbose bool
 var cleanJSON bool
+var cleanLinks string
 
 // cleanBlockedCap is the maximum number of blocked tickets listed in the
 // human dry-run output before truncating. --verbose lifts the cap.
@@ -86,6 +99,32 @@ func init() {
 		"Show the full blocked ticket list instead of the first 20")
 	cleanCmd.Flags().BoolVar(&cleanJSON, "json", false,
 		"Emit machine-readable JSON instead of human-readable text")
+	cleanCmd.Flags().StringVar(&cleanLinks, "links", "ignore",
+		"Whether links block deletion: ignore or block")
+}
+
+// linkPolicy records whether `tk clean` treats links as deletion blockers.
+type linkPolicy int
+
+const (
+	// linkPolicyIgnore is the default: links are informational and never block
+	// deletion.
+	linkPolicyIgnore linkPolicy = iota
+	// linkPolicyBlock treats a link to a ticket that is not itself being
+	// deleted as a blocker, the historical behavior of `tk clean`.
+	linkPolicyBlock
+)
+
+// parseLinkPolicy maps the --links flag value to a linkPolicy.
+func parseLinkPolicy(value string) (linkPolicy, error) {
+	switch value {
+	case "ignore":
+		return linkPolicyIgnore, nil
+	case "block":
+		return linkPolicyBlock, nil
+	default:
+		return linkPolicyIgnore, fmt.Errorf("invalid --links value %q: must be \"ignore\" or \"block\"", value)
+	}
 }
 
 type cleanableTicket struct {
@@ -130,8 +169,9 @@ const (
 // referencing it is deleted in the same run. Checking each ticket once against
 // the unmodified ticket set would peel off a single level of a dependency chain
 // per invocation, so instead we start with every closed ticket as a candidate
-// and shrink that set to a fixed point.
-func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
+// and shrink that set to a fixed point. Links participate in this fixed point
+// only under linkPolicyBlock.
+func deletionPlan(allTickets []*ticket.Ticket, policy linkPolicy) []cleanableTicket {
 	// Reverse indices: who points at each ticket.
 	dependants := make(map[string][]*ticket.Ticket)
 	children := make(map[string][]*ticket.Ticket)
@@ -148,8 +188,9 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 		}
 	}
 
-	// Every closed ticket starts as a candidate; dependants, children, and
-	// links can all demote it during the fixed-point loop below.
+	// Every closed ticket starts as a candidate; dependants and children (and
+	// links under linkPolicyBlock) can all demote it during the fixed-point
+	// loop below.
 	deletable := make(map[string]bool)
 	reasons := make(map[string]string)
 	var closed []*ticket.Ticket
@@ -181,7 +222,7 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 			if !deletable[t.ID] {
 				continue
 			}
-			if edge, blocked := blockingReason(t, dependants, children, byID, deletable); blocked {
+			if edge, blocked := blockingReason(t, dependants, children, byID, deletable, policy); blocked {
 				delete(deletable, t.ID)
 				blockedBy[t.ID] = edge
 				reasons[t.ID] = reasonFor(edge, byID)
@@ -251,10 +292,11 @@ func reasonFor(edge blockEdge, byID map[string]*ticket.Ticket) string {
 
 // blockingReason reports the specific edge that prevents a candidate from being
 // deleted, given the set of tickets currently expected to be deleted in this
-// run. Dependants, children, and links are all treated transitively: a
-// reference only blocks deletion if the referencing or linked ticket is not
-// itself deletable in this run.
-func blockingReason(t *ticket.Ticket, dependants, children map[string][]*ticket.Ticket, byID map[string]*ticket.Ticket, deletable map[string]bool) (blockEdge, bool) {
+// run. Dependants and children are always treated transitively: a reference
+// only blocks deletion if the referencing ticket is not itself deletable in
+// this run. Links are treated the same way only under linkPolicyBlock; under
+// linkPolicyIgnore they are skipped entirely.
+func blockingReason(t *ticket.Ticket, dependants, children map[string][]*ticket.Ticket, byID map[string]*ticket.Ticket, deletable map[string]bool, policy linkPolicy) (blockEdge, bool) {
 	for _, d := range dependants[t.ID] {
 		if !deletable[d.ID] {
 			return blockEdge{blockerID: d.ID, relation: relationDependant}, true
@@ -268,13 +310,15 @@ func blockingReason(t *ticket.Ticket, dependants, children map[string][]*ticket.
 		return blockEdge{blockerID: c.ID, relation: relationChild}, true
 	}
 
-	for _, linkID := range t.Links {
-		linked, ok := byID[linkID]
-		if !ok {
-			return blockEdge{blockerID: linkID, relation: relationLinkMissing}, true
-		}
-		if !deletable[linked.ID] {
-			return blockEdge{blockerID: linked.ID, relation: relationLink}, true
+	if policy == linkPolicyBlock {
+		for _, linkID := range t.Links {
+			linked, ok := byID[linkID]
+			if !ok {
+				return blockEdge{blockerID: linkID, relation: relationLinkMissing}, true
+			}
+			if !deletable[linked.ID] {
+				return blockEdge{blockerID: linked.ID, relation: relationLink}, true
+			}
 		}
 	}
 
@@ -512,8 +556,13 @@ func runClean(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 2. Classify closed tickets as deletable or blocked
-	cleanable := deletionPlan(allTickets)
+	// 2. Resolve the link policy, then classify closed tickets as deletable or
+	// blocked
+	policy, err := parseLinkPolicy(cleanLinks)
+	if err != nil {
+		return err
+	}
+	cleanable := deletionPlan(allTickets, policy)
 
 	// 3. Separate into deletable and blocked lists
 	var deletable []cleanableTicket

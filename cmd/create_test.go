@@ -45,6 +45,7 @@ func setupTestCmd(t *testing.T) (*testContext, func()) {
 		cleanFix = false
 		cleanVerbose = false
 		cleanJSON = false
+		cleanLinks = "ignore"
 	}
 
 	ctx := &testContext{

@@ -477,8 +477,9 @@ func TestCleanClosedParentWithMixedStatusChildren(t *testing.T) {
 	})
 }
 
-// TestCleanRefuseWithLinks - Closed ticket has bidirectional links
-func TestCleanRefuseWithLinks(t *testing.T) {
+// TestCleanRefuseWithLinksBlockPolicy - Closed ticket has bidirectional links,
+// which block under the historical --links=block policy.
+func TestCleanRefuseWithLinksBlockPolicy(t *testing.T) {
 	t.Run("closed ticket with single link", func(t *testing.T) {
 		ctx, cleanup := setupTestCmd(t)
 		defer cleanup()
@@ -493,7 +494,7 @@ func TestCleanRefuseWithLinks(t *testing.T) {
 
 		ctx.exec("link", idA, idB)
 
-		output, err := ctx.exec("clean")
+		output, err := ctx.exec("clean", "--links=block")
 		if err != nil {
 			t.Fatalf("clean command error: %v", err)
 		}
@@ -524,7 +525,7 @@ func TestCleanRefuseWithLinks(t *testing.T) {
 		idC = strings.TrimSpace(idC)
 		ctx.exec("link", idA, idC)
 
-		output, err := ctx.exec("clean")
+		output, err := ctx.exec("clean", "--links=block")
 		if err != nil {
 			t.Fatalf("clean command error: %v", err)
 		}
@@ -538,7 +539,8 @@ func TestCleanRefuseWithLinks(t *testing.T) {
 	})
 }
 
-// TestCleanTransitiveLinks - Links are resolved transitively, like deps/children
+// TestCleanTransitiveLinks - Under --links=block, links are resolved
+// transitively, like deps/children.
 func TestCleanTransitiveLinks(t *testing.T) {
 	t.Run("mutually linked closed tickets are deletable together", func(t *testing.T) {
 		ctx, cleanup := setupTestCmd(t)
@@ -553,7 +555,7 @@ func TestCleanTransitiveLinks(t *testing.T) {
 		ctx.exec("close", idA)
 		ctx.exec("close", idB)
 
-		output, err := ctx.exec("clean")
+		output, err := ctx.exec("clean", "--links=block")
 		if err != nil {
 			t.Fatalf("clean command error: %v", err)
 		}
@@ -597,7 +599,7 @@ func TestCleanTransitiveLinks(t *testing.T) {
 		ctx.exec("close", idA)
 		ctx.exec("close", idB)
 
-		output, err := ctx.exec("clean")
+		output, err := ctx.exec("clean", "--links=block")
 		if err != nil {
 			t.Fatalf("clean command error: %v", err)
 		}
@@ -628,7 +630,7 @@ func TestCleanTransitiveLinks(t *testing.T) {
 
 		ctx.exec("new", "--parent", idB, "Child of B")
 
-		output, err := ctx.exec("clean")
+		output, err := ctx.exec("clean", "--links=block")
 		if err != nil {
 			t.Fatalf("clean command error: %v", err)
 		}
@@ -646,6 +648,310 @@ func TestCleanTransitiveLinks(t *testing.T) {
 			t.Errorf("expected %s blocked with 'has links', got: %s", idA, output)
 		}
 	})
+}
+
+// TestCleanLinksPolicy - --links selects whether links block deletion. The
+// default is ignore, so a closed ticket linked to a surviving ticket is
+// deletable; --links=block reproduces the historical behavior. Deps and parent
+// blocking are unaffected by the flag.
+func TestCleanLinksPolicy(t *testing.T) {
+	t.Run("default ignores a link to an open ticket", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Closed ticket")
+		idA = strings.TrimSpace(idA)
+		ctx.exec("close", idA)
+
+		idB, _ := ctx.exec("new", "Open linked ticket")
+		idB = strings.TrimSpace(idB)
+		ctx.exec("link", idA, idB)
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+		if !strings.Contains(output, "1 deletable") || !strings.Contains(output, "0 blocked") {
+			t.Errorf("expected the linked ticket to be deletable by default, got: %s", output)
+		}
+
+		output, err = ctx.exec("clean", "--fix")
+		if err != nil {
+			t.Fatalf("clean --fix command error: %v", err)
+		}
+		if !strings.Contains(output, "Deleted 1 ticket(s)") {
+			t.Errorf("expected 'Deleted 1 ticket(s)', got: %s", output)
+		}
+		if _, err := ctx.store().Get(idA); err == nil {
+			t.Errorf("ticket %s should be deleted under --links=ignore", idA)
+		}
+	})
+
+	t.Run("explicit ignore matches the default", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Closed ticket")
+		idA = strings.TrimSpace(idA)
+		ctx.exec("close", idA)
+
+		idB, _ := ctx.exec("new", "Open linked ticket")
+		idB = strings.TrimSpace(idB)
+		ctx.exec("link", idA, idB)
+
+		output, err := ctx.exec("clean", "--links=ignore")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+		if !strings.Contains(output, "1 deletable") || !strings.Contains(output, "0 blocked") {
+			t.Errorf("expected '1 deletable' and '0 blocked', got: %s", output)
+		}
+	})
+
+	t.Run("block reproduces the historical behavior", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Closed ticket")
+		idA = strings.TrimSpace(idA)
+		ctx.exec("close", idA)
+
+		idB, _ := ctx.exec("new", "Open linked ticket")
+		idB = strings.TrimSpace(idB)
+		ctx.exec("link", idA, idB)
+
+		output, err := ctx.exec("clean", "--links=block")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+		if !strings.Contains(output, "0 deletable") || !strings.Contains(output, "1 blocked") {
+			t.Errorf("expected '0 deletable' and '1 blocked', got: %s", output)
+		}
+		if !strings.Contains(output, "has links") {
+			t.Errorf("expected 'has links', got: %s", output)
+		}
+
+		output, err = ctx.exec("clean", "--fix", "--links=block")
+		if err != nil {
+			t.Fatalf("clean --fix command error: %v", err)
+		}
+		if _, err := ctx.store().Get(idA); err != nil {
+			t.Errorf("ticket %s should survive under --links=block: %v", idA, err)
+		}
+	})
+
+	t.Run("link to a blocked closed ticket", func(t *testing.T) {
+		// A links to B. B is closed but pinned by an open child, so B is
+		// blocked regardless of the link policy. Under ignore only B is
+		// blocked; under block A is dragged in as well.
+		newLinkedChild := func(t *testing.T) (string, string, string) {
+			t.Helper()
+			ctx, cleanup := setupTestCmd(t)
+			t.Cleanup(cleanup)
+
+			idA, _ := ctx.exec("new", "Ticket A")
+			idA = strings.TrimSpace(idA)
+			idB, _ := ctx.exec("new", "Ticket B")
+			idB = strings.TrimSpace(idB)
+			ctx.exec("link", idA, idB)
+			ctx.exec("close", idA)
+			ctx.exec("close", idB)
+			ctx.exec("new", "--parent", idB, "Child of B")
+			return idA, idB, ctx.ticketsDir
+		}
+
+		t.Run("ignore only blocks the ticket anchored by the child", func(t *testing.T) {
+			_, idB, dir := newLinkedChild(t)
+			ctx := &testContext{ticketsDir: dir, t: t}
+
+			output, err := ctx.exec("clean", "--links=ignore")
+			if err != nil {
+				t.Fatalf("clean command error: %v", err)
+			}
+			if !strings.Contains(output, "1 deletable") || !strings.Contains(output, "1 blocked") {
+				t.Errorf("expected '1 deletable' and '1 blocked', got: %s", output)
+			}
+			if strings.Contains(output, "has links") {
+				t.Errorf("expected no link-based block under --links=ignore, got: %s", output)
+			}
+			if !strings.Contains(output, idB+" [closed]") || !strings.Contains(output, "has non-closed children") {
+				t.Errorf("expected %s blocked by its child, got: %s", idB, output)
+			}
+		})
+
+		t.Run("block drags the linked ticket in", func(t *testing.T) {
+			idA, idB, dir := newLinkedChild(t)
+			ctx := &testContext{ticketsDir: dir, t: t}
+
+			output, err := ctx.exec("clean", "--links=block")
+			if err != nil {
+				t.Fatalf("clean command error: %v", err)
+			}
+			if !strings.Contains(output, "0 deletable") || !strings.Contains(output, "2 blocked") {
+				t.Errorf("expected '0 deletable' and '2 blocked', got: %s", output)
+			}
+			if !strings.Contains(output, idA+" [closed]") || !strings.Contains(output, "has links") {
+				t.Errorf("expected %s blocked with 'has links', got: %s", idA, output)
+			}
+			if !strings.Contains(output, idB+" [closed]") || !strings.Contains(output, "has non-closed children") {
+				t.Errorf("expected %s blocked by its child, got: %s", idB, output)
+			}
+		})
+	})
+
+	t.Run("deps and parent blocking are unaffected", func(t *testing.T) {
+		for _, policy := range []string{"ignore", "block"} {
+			t.Run("open dependant blocks under --links="+policy, func(t *testing.T) {
+				ctx, cleanup := setupTestCmd(t)
+				defer cleanup()
+
+				idA, _ := ctx.exec("new", "Closed ticket")
+				idA = strings.TrimSpace(idA)
+				ctx.exec("close", idA)
+
+				idB, _ := ctx.exec("new", "Open dependant")
+				idB = strings.TrimSpace(idB)
+				ctx.exec("dep", idB, idA)
+
+				output, err := ctx.exec("clean", "--links="+policy)
+				if err != nil {
+					t.Fatalf("clean command error: %v", err)
+				}
+				if !strings.Contains(output, "1 blocked") || !strings.Contains(output, "has dependants") {
+					t.Errorf("expected dependant blocking under --links=%s, got: %s", policy, output)
+				}
+			})
+
+			t.Run("open child blocks under --links="+policy, func(t *testing.T) {
+				ctx, cleanup := setupTestCmd(t)
+				defer cleanup()
+
+				idParent, _ := ctx.exec("new", "Closed parent")
+				idParent = strings.TrimSpace(idParent)
+				ctx.exec("close", idParent)
+				ctx.exec("new", "--parent", idParent, "Open child")
+
+				output, err := ctx.exec("clean", "--links="+policy)
+				if err != nil {
+					t.Fatalf("clean command error: %v", err)
+				}
+				if !strings.Contains(output, "1 blocked") || !strings.Contains(output, "has non-closed children") {
+					t.Errorf("expected child blocking under --links=%s, got: %s", policy, output)
+				}
+			})
+		}
+	})
+
+	t.Run("dangling link follows the policy", func(t *testing.T) {
+		// A closed ticket links to an ID whose file has been removed. Under
+		// ignore the dangling link is inert; under block it is the historical
+		// [missing] anchor.
+		newDangling := func(t *testing.T) (string, string) {
+			t.Helper()
+			ctx, cleanup := setupTestCmd(t)
+			t.Cleanup(cleanup)
+
+			idA, _ := ctx.exec("new", "Closed with dangling link")
+			idA = strings.TrimSpace(idA)
+			idB, _ := ctx.exec("new", "Link target")
+			idB = strings.TrimSpace(idB)
+			ctx.exec("link", idA, idB)
+			ctx.exec("close", idA)
+			ctx.exec("close", idB)
+			if err := os.Remove(filepath.Join(ctx.ticketsDir, idB+".md")); err != nil {
+				t.Fatalf("failed to remove link target: %v", err)
+			}
+			return idA, ctx.ticketsDir
+		}
+
+		t.Run("ignore leaves the ticket deletable", func(t *testing.T) {
+			idA, dir := newDangling(t)
+			ctx := &testContext{ticketsDir: dir, t: t}
+
+			output, err := ctx.exec("clean", "--links=ignore")
+			if err != nil {
+				t.Fatalf("clean command error: %v", err)
+			}
+			if !strings.Contains(output, "1 deletable") || !strings.Contains(output, "0 blocked") {
+				t.Errorf("expected dangling link to be ignored, got: %s", output)
+			}
+
+			output, err = ctx.exec("clean", "--fix", "--links=ignore")
+			if err != nil {
+				t.Fatalf("clean --fix command error: %v", err)
+			}
+			if !strings.Contains(output, "Deleted 1 ticket(s)") {
+				t.Errorf("expected 'Deleted 1 ticket(s)', got: %s", output)
+			}
+			if _, err := ctx.store().Get(idA); err == nil {
+				t.Errorf("ticket %s with a dangling link should be deleted", idA)
+			}
+		})
+
+		t.Run("block keeps the missing anchor", func(t *testing.T) {
+			_, dir := newDangling(t)
+			ctx := &testContext{ticketsDir: dir, t: t}
+
+			output, err := ctx.exec("clean", "--links=block")
+			if err != nil {
+				t.Fatalf("clean command error: %v", err)
+			}
+			if !strings.Contains(output, "1 blocked") || !strings.Contains(output, "[missing]") {
+				t.Errorf("expected a [missing] anchor under --links=block, got: %s", output)
+			}
+		})
+	})
+
+	t.Run("invalid policy is rejected", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Closed ticket")
+		idA = strings.TrimSpace(idA)
+		ctx.exec("close", idA)
+
+		if _, err := ctx.exec("clean", "--links=bogus"); err == nil {
+			t.Error("expected an error for an invalid --links value")
+		}
+
+		// The rejected run must not delete anything.
+		if _, err := ctx.store().Get(idA); err != nil {
+			t.Errorf("ticket %s should survive a rejected run: %v", idA, err)
+		}
+	})
+}
+
+// TestCleanHelpDocumentsLinksPolicy - clean --help carries the --links
+// behavior table and states that deps/parent blocking is unaffected.
+func TestCleanHelpDocumentsLinksPolicy(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Cobra's --help flag is sticky on the command, so clear it once the
+	// captured invocation returns; otherwise later tests print help instead of
+	// running the command.
+	defer func() {
+		if flag := cleanCmd.Flags().Lookup("help"); flag != nil {
+			_ = flag.Value.Set("false")
+		}
+	}()
+
+	output, err := ctx.exec("clean", "--help")
+	if err != nil {
+		t.Fatalf("clean --help error: %v", err)
+	}
+
+	for _, want := range []string{
+		"--links",
+		"--links=ignore",
+		"--links=block",
+		"Dependants and children are always hard blockers",
+		"tk prune",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("clean --help missing %q:\n%s", want, output)
+		}
+	}
 }
 
 // TestCleanDryRunNoChanges - Verify dry-run doesn't delete anything
@@ -1087,7 +1393,7 @@ func TestCleanJSONMissingAnchor(t *testing.T) {
 		t.Fatalf("failed to remove link target: %v", err)
 	}
 
-	output, err := ctx.exec("clean", "--json")
+	output, err := ctx.exec("clean", "--json", "--links=block")
 	if err != nil {
 		t.Fatalf("clean --json command error: %v", err)
 	}
@@ -1649,7 +1955,7 @@ func TestCleanAnchorMissingID(t *testing.T) {
 		t.Fatalf("failed to remove link target: %v", err)
 	}
 
-	output, err := ctx.exec("clean")
+	output, err := ctx.exec("clean", "--links=block")
 	if err != nil {
 		t.Fatalf("clean command error: %v", err)
 	}
@@ -1724,7 +2030,7 @@ func TestCleanAnchorCycleOnlyDeletable(t *testing.T) {
 	ctx.exec("close", idA)
 	ctx.exec("close", idB)
 
-	output, err := ctx.exec("clean")
+	output, err := ctx.exec("clean", "--links=block")
 	if err != nil {
 		t.Fatalf("clean command error: %v", err)
 	}
@@ -1736,7 +2042,7 @@ func TestCleanAnchorCycleOnlyDeletable(t *testing.T) {
 		t.Errorf("cycle-only component must not produce anchors, got: %s", output)
 	}
 
-	output, err = ctx.exec("clean", "--fix")
+	output, err = ctx.exec("clean", "--fix", "--links=block")
 	if err != nil {
 		t.Fatalf("clean --fix command error: %v", err)
 	}

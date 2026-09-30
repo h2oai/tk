@@ -82,13 +82,31 @@ tk link --all-pairs h42 8a2 3f1
 tk unlink h42 8a2
 
 # Clean up closed tickets
+# By default links do not block deletion; non-closed deps/children still do.
 tk clean              # Dry-run: show what would be deleted
 tk clean --fix        # Actually delete closed tickets
+tk clean --links=block  # Historical behavior: links also block deletion
 
 # Clean up dangling references
 tk prune              # Dry-run: show what would be cleaned
 tk prune --fix        # Actually remove dangling references
 ```
+
+## Cleaning Closed Tickets
+
+`tk clean` deletes closed tickets that nothing surviving references. Dependants
+(`deps`) and children (`parent`) are always hard blockers. The `--links` flag
+selects whether *links* (bidirectional "related tickets") also block deletion:
+
+| `--links` | Behavior |
+| --- | --- |
+| `ignore` (default) | Links are informational; a link to any ticket, including a surviving one, never blocks deletion. |
+| `block` | A link to a ticket that is not itself being deleted blocks deletion (the historical behavior). |
+
+`--links` does not affect dependant or child blocking. A link to a missing ID
+(a dangling link) follows the active policy: ignored under `--links=ignore` and
+blocking under `--links=block`. `clean` never rewrites dangling references; use
+`tk prune` to remove them.
 
 ## All Commands
 
