@@ -35,11 +35,18 @@ a large cascade can be traced to the few references keeping it alive.`,
 }
 
 var cleanFix bool
+var cleanVerbose bool
+
+// cleanBlockedCap is the maximum number of blocked tickets listed in the
+// human dry-run output before truncating. --verbose lifts the cap.
+const cleanBlockedCap = 20
 
 func init() {
 	rootCmd.AddCommand(cleanCmd)
 	cleanCmd.Flags().BoolVar(&cleanFix, "fix", false,
 		"Actually delete closed tickets (default is dry-run)")
+	cleanCmd.Flags().BoolVarP(&cleanVerbose, "verbose", "v", false,
+		"Show the full blocked ticket list instead of the first 20")
 }
 
 type cleanableTicket struct {
@@ -387,9 +394,21 @@ func runClean(cmd *cobra.Command, args []string) error {
 		if numBlocked > 0 {
 			printAnchors(anchors)
 
-			fmt.Println("\nBlocked tickets:")
-			for _, ct := range blocked {
+			shown := blocked
+			if !cleanVerbose && len(blocked) > cleanBlockedCap {
+				shown = blocked[:cleanBlockedCap]
+			}
+
+			if len(shown) < numBlocked {
+				fmt.Printf("\nBlocked tickets (showing %d of %d):\n", len(shown), numBlocked)
+			} else {
+				fmt.Println("\nBlocked tickets:")
+			}
+			for _, ct := range shown {
 				fmt.Printf("  %s [%s] %s - %s\n", ct.ticket.ID, ct.ticket.Status, ct.ticket.Title, ct.reason)
+			}
+			if len(shown) < numBlocked {
+				fmt.Printf("  ... and %d more; re-run with --verbose for the full list.\n", numBlocked-len(shown))
 			}
 		}
 

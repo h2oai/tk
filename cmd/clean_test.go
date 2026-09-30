@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1412,4 +1413,127 @@ func TestCleanAnchorCycleOnlyDeletable(t *testing.T) {
 	if !strings.Contains(output, "Deleted 2 ticket(s)") {
 		t.Errorf("expected 'Deleted 2 ticket(s)', got: %s", output)
 	}
+}
+
+// TestCleanBlockedListCap - The human dry-run blocked listing is capped at
+// cleanBlockedCap unless --verbose is set.
+func TestCleanBlockedListCap(t *testing.T) {
+	// makeBlocked creates count closed tickets, each pinned in place by its
+	// own open dependant, and returns the blocked ticket IDs.
+	makeBlocked := func(ctx *testContext, count int) []string {
+		ids := make([]string, 0, count)
+		for i := 0; i < count; i++ {
+			id, _ := ctx.exec("new", "Blocked closed")
+			id = strings.TrimSpace(id)
+			ctx.exec("close", id)
+			dep, _ := ctx.exec("new", "Open dependant")
+			dep = strings.TrimSpace(dep)
+			ctx.exec("dep", dep, id)
+			ids = append(ids, id)
+		}
+		return ids
+	}
+
+	countListed := func(output string, ids []string) int {
+		n := 0
+		for _, id := range ids {
+			// Match the per-ticket blocked line, not the bare ID an anchor
+			// label may mention for a single blocked ticket.
+			if strings.Contains(output, id+" [closed]") {
+				n++
+			}
+		}
+		return n
+	}
+
+	t.Run("below cap lists all without truncation", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		ids := makeBlocked(ctx, cleanBlockedCap-1)
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+		if !strings.Contains(output, "Blocked tickets:") {
+			t.Errorf("expected 'Blocked tickets:' header, got: %s", output)
+		}
+		if strings.Contains(output, "... and") {
+			t.Errorf("expected no truncation line, got: %s", output)
+		}
+		if got := countListed(output, ids); got != len(ids) {
+			t.Errorf("expected all %d tickets listed, got %d: %s", len(ids), got, output)
+		}
+		if !strings.Contains(output, "has dependants") {
+			t.Errorf("expected reason field preserved, got: %s", output)
+		}
+	})
+
+	t.Run("at cap lists all without truncation", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		ids := makeBlocked(ctx, cleanBlockedCap)
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+		if !strings.Contains(output, "Blocked tickets:") {
+			t.Errorf("expected untruncated 'Blocked tickets:' header, got: %s", output)
+		}
+		if strings.Contains(output, "... and") {
+			t.Errorf("expected no truncation line at cap, got: %s", output)
+		}
+		if got := countListed(output, ids); got != len(ids) {
+			t.Errorf("expected all %d tickets listed, got %d: %s", len(ids), got, output)
+		}
+	})
+
+	t.Run("above cap truncates and reports remainder", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		ids := makeBlocked(ctx, cleanBlockedCap+1)
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+		wantHeader := fmt.Sprintf("Blocked tickets (showing %d of %d):", cleanBlockedCap, cleanBlockedCap+1)
+		if !strings.Contains(output, wantHeader) {
+			t.Errorf("expected %q, got: %s", wantHeader, output)
+		}
+		if !strings.Contains(output, "... and 1 more; re-run with --verbose for the full list.") {
+			t.Errorf("expected truncation line, got: %s", output)
+		}
+		if got := countListed(output, ids); got != cleanBlockedCap {
+			t.Errorf("expected %d tickets listed, got %d: %s", cleanBlockedCap, got, output)
+		}
+		if !strings.Contains(output, "has dependants") {
+			t.Errorf("expected reason field preserved, got: %s", output)
+		}
+	})
+
+	t.Run("verbose lifts the cap", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		ids := makeBlocked(ctx, cleanBlockedCap+1)
+
+		output, err := ctx.exec("clean", "--verbose")
+		if err != nil {
+			t.Fatalf("clean --verbose command error: %v", err)
+		}
+		if strings.Contains(output, "(showing") {
+			t.Errorf("expected uncapped header with --verbose, got: %s", output)
+		}
+		if strings.Contains(output, "... and") {
+			t.Errorf("expected no truncation line with --verbose, got: %s", output)
+		}
+		if got := countListed(output, ids); got != len(ids) {
+			t.Errorf("expected all %d tickets listed, got %d: %s", len(ids), got, output)
+		}
+	})
 }

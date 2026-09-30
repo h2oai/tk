@@ -43,6 +43,7 @@ func setupTestCmd(t *testing.T) (*testContext, func()) {
 		rmForce = false
 		pruneFix = false
 		cleanFix = false
+		cleanVerbose = false
 	}
 
 	ctx := &testContext{
