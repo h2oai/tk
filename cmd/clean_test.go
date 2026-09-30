@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -2266,4 +2267,255 @@ func TestCleanDirectTransitiveSplit(t *testing.T) {
 			t.Errorf("cycle-only set must not report a direct/transitive split, got: %s", output)
 		}
 	})
+}
+
+// componentRowTest is one parsed line of `tk clean --components` output.
+type componentRowTest struct {
+	size   int
+	open   int
+	closed int
+	status string
+}
+
+// parseComponentRows extracts the component table from `tk clean --components`
+// output.
+func parseComponentRows(t *testing.T, output string) []componentRowTest {
+	t.Helper()
+	var rows []componentRowTest
+	started := false
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "Components:" {
+			started = true
+			continue
+		}
+		if !started || trimmed == "" {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 5 || fields[0] == "#" {
+			continue
+		}
+		size, errSize := strconv.Atoi(fields[1])
+		open, errOpen := strconv.Atoi(fields[2])
+		closed, errClosed := strconv.Atoi(fields[3])
+		if errSize != nil || errOpen != nil || errClosed != nil {
+			continue
+		}
+		rows = append(rows, componentRowTest{
+			size:   size,
+			open:   open,
+			closed: closed,
+			status: strings.Join(fields[4:], " "),
+		})
+	}
+	return rows
+}
+
+// TestCleanComponentsGrouping - the component view groups linked tickets,
+// labels anchored/deletable/n/a components, and orders by size descending.
+func TestCleanComponentsGrouping(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Anchored component: three closed tickets linked to one open anchor.
+	var chain []string
+	for i := 0; i < 3; i++ {
+		id, _ := ctx.exec("new", fmt.Sprintf("Chain %d", i))
+		id = strings.TrimSpace(id)
+		ctx.exec("close", id)
+		chain = append(chain, id)
+	}
+	idOpen, _ := ctx.exec("new", "Open anchor")
+	idOpen = strings.TrimSpace(idOpen)
+	ctx.exec("link", chain[0], chain[1], chain[2], idOpen)
+
+	// Deletable component: two closed tickets linked together.
+	idD1, _ := ctx.exec("new", "Deletable 1")
+	idD1 = strings.TrimSpace(idD1)
+	ctx.exec("close", idD1)
+	idD2, _ := ctx.exec("new", "Deletable 2")
+	idD2 = strings.TrimSpace(idD2)
+	ctx.exec("close", idD2)
+	ctx.exec("link", idD1, idD2)
+
+	// Isolated tickets: one open (n/a), one closed (deletable singleton).
+	ctx.exec("new", "Solo open")
+	idSolo, _ := ctx.exec("new", "Solo closed")
+	idSolo = strings.TrimSpace(idSolo)
+	ctx.exec("close", idSolo)
+
+	output, err := ctx.exec("clean", "--components")
+	if err != nil {
+		t.Fatalf("clean --components command error: %v", err)
+	}
+
+	rows := parseComponentRows(t, output)
+	if len(rows) != 4 {
+		t.Fatalf("expected 4 components, got %d:\n%s", len(rows), output)
+	}
+
+	if rows[0].size != 4 || rows[0].open != 1 || rows[0].closed != 3 {
+		t.Errorf("first component = %+v; want size 4, open 1, closed 3\n%s", rows[0], output)
+	}
+	if !strings.HasPrefix(rows[0].status, "anchored") || !strings.Contains(rows[0].status, idOpen) {
+		t.Errorf("first component status = %q; want anchored naming %s", rows[0].status, idOpen)
+	}
+	if rows[1].size != 2 || rows[1].open != 0 || rows[1].closed != 2 || rows[1].status != "deletable" {
+		t.Errorf("second component = %+v; want size 2, closed 2, deletable", rows[1])
+	}
+	for i := 1; i < len(rows); i++ {
+		if rows[i].size > rows[i-1].size {
+			t.Errorf("components not sorted by size descending: %+v", rows)
+			break
+		}
+	}
+	var sawNA, sawDeletable bool
+	for _, r := range rows[2:] {
+		switch r.status {
+		case "n/a":
+			sawNA = true
+		case "deletable":
+			sawDeletable = true
+		}
+	}
+	if !sawNA || !sawDeletable {
+		t.Errorf("expected both an n/a and a deletable singleton, got: %+v\n%s", rows, output)
+	}
+}
+
+// TestCleanComponentsIsolatedDanglingSelfLink - isolated tickets, dangling
+// references, and self-links are all handled without panicking and without
+// inventing phantom members.
+func TestCleanComponentsIsolatedDanglingSelfLink(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// Self-link: a ticket linked to itself stays a singleton.
+	idSelf, _ := ctx.exec("new", "Self linked")
+	idSelf = strings.TrimSpace(idSelf)
+	ctx.exec("link", idSelf, idSelf)
+
+	// Dangling reference: remove the link target's file after linking.
+	idDangling, _ := ctx.exec("new", "Dangling source")
+	idDangling = strings.TrimSpace(idDangling)
+	idTarget, _ := ctx.exec("new", "Link target")
+	idTarget = strings.TrimSpace(idTarget)
+	ctx.exec("link", idDangling, idTarget)
+	if err := os.Remove(filepath.Join(ctx.ticketsDir, idTarget+".md")); err != nil {
+		t.Fatalf("failed to remove link target: %v", err)
+	}
+
+	// Truly isolated ticket.
+	idIsolated, _ := ctx.exec("new", "Isolated")
+	idIsolated = strings.TrimSpace(idIsolated)
+
+	output, err := ctx.exec("clean", "--components")
+	if err != nil {
+		t.Fatalf("clean --components command error: %v", err)
+	}
+
+	rows := parseComponentRows(t, output)
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 singleton components, got %d:\n%s", len(rows), output)
+	}
+	for _, r := range rows {
+		if r.size != 1 || r.open != 1 || r.closed != 0 || r.status != "n/a" {
+			t.Errorf("singleton component = %+v; want size 1, open 1, n/a", r)
+		}
+	}
+	if strings.Contains(output, idTarget) {
+		t.Errorf("dangling target %s must not appear as a component member:\n%s", idTarget, output)
+	}
+}
+
+// TestCleanComponentsJSON - --components --json emits the component view as
+// machine-readable JSON and nothing else.
+func TestCleanComponentsJSON(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	idClosed, _ := ctx.exec("new", "Closed")
+	idClosed = strings.TrimSpace(idClosed)
+	ctx.exec("close", idClosed)
+	idOpen, _ := ctx.exec("new", "Open")
+	idOpen = strings.TrimSpace(idOpen)
+	ctx.exec("link", idClosed, idOpen)
+
+	output, err := ctx.exec("clean", "--components", "--json")
+	if err != nil {
+		t.Fatalf("clean --components --json command error: %v", err)
+	}
+
+	var payload struct {
+		Components []struct {
+			Size    int      `json:"size"`
+			Open    int      `json:"open"`
+			Closed  int      `json:"closed"`
+			Status  string   `json:"status"`
+			OpenIDs []string `json:"open_ids"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("clean --components --json output is not valid JSON: %v\n%s", err, output)
+	}
+	if len(payload.Components) != 1 {
+		t.Fatalf("expected 1 component, got %d: %s", len(payload.Components), output)
+	}
+	got := payload.Components[0]
+	if got.Size != 2 || got.Open != 1 || got.Closed != 1 || got.Status != "anchored" {
+		t.Errorf("component = %+v; want size 2, open 1, closed 1, anchored", got)
+	}
+	if len(got.OpenIDs) != 1 || got.OpenIDs[0] != idOpen {
+		t.Errorf("open_ids = %v; want [%s]", got.OpenIDs, idOpen)
+	}
+	for _, prose := range []string{"Components:", "Found ", "Run with --fix"} {
+		if strings.Contains(output, prose) {
+			t.Errorf("JSON output must not contain prose %q: %s", prose, output)
+		}
+	}
+}
+
+// TestCleanComponentsDoesNotDelete - --components is a report: it takes
+// precedence over --fix and leaves every ticket in place.
+func TestCleanComponentsDoesNotDelete(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	id, _ := ctx.exec("new", "Closed")
+	id = strings.TrimSpace(id)
+	ctx.exec("close", id)
+
+	output, err := ctx.exec("clean", "--components", "--fix")
+	if err != nil {
+		t.Fatalf("clean --components --fix command error: %v", err)
+	}
+	if !strings.Contains(output, "Components:") {
+		t.Errorf("expected component listing, got: %s", output)
+	}
+	if _, err := ctx.store().Get(id); err != nil {
+		t.Errorf("ticket %s must survive --components --fix: %v", id, err)
+	}
+}
+
+// TestCleanDefaultOutputUnchanged - without --components the output is the
+// ordinary deletion plan and never the component listing.
+func TestCleanDefaultOutputUnchanged(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	id, _ := ctx.exec("new", "Closed")
+	id = strings.TrimSpace(id)
+	ctx.exec("close", id)
+
+	output, err := ctx.exec("clean")
+	if err != nil {
+		t.Fatalf("clean command error: %v", err)
+	}
+	if strings.Contains(output, "Components:") {
+		t.Errorf("default clean output must not contain the component listing: %s", output)
+	}
+	if !strings.Contains(output, "Found 1 closed ticket(s)") {
+		t.Errorf("default clean output changed: %s", output)
+	}
 }

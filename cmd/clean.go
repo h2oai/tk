@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/lo5/tk/internal/ticket"
@@ -78,7 +79,15 @@ With --json --fix the deletion results are emitted instead:
   }
 
 Anchors are ordered by blocked_count (descending), then id. Entries are ordered
-by ticket id.`, Args: cobra.NoArgs,
+by ticket id.
+
+With --components the ticket graph is shown grouped by connected component
+instead of the deletion plan. Components are connected by links (treated as
+symmetric); tickets with no links are isolated singletons. Each component is
+listed by size descending with its open and closed counts and whether it is
+anchored (contains a non-closed ticket) or deletable. --components takes
+precedence over --fix: it reports and never deletes. Combined with --json it
+emits {"components": [...]}.`, Args: cobra.NoArgs,
 	RunE: runClean,
 }
 
@@ -86,6 +95,7 @@ var cleanFix bool
 var cleanVerbose bool
 var cleanJSON bool
 var cleanLinks string
+var cleanComponents bool
 
 // cleanBlockedCap is the maximum number of blocked tickets listed in the
 // human dry-run output before truncating. --verbose lifts the cap.
@@ -101,6 +111,8 @@ func init() {
 		"Emit machine-readable JSON instead of human-readable text")
 	cleanCmd.Flags().StringVar(&cleanLinks, "links", "ignore",
 		"Whether links block deletion: ignore or block")
+	cleanCmd.Flags().BoolVar(&cleanComponents, "components", false,
+		"Group tickets by connected component instead of showing the deletion plan")
 }
 
 // linkPolicy records whether `tk clean` treats links as deletion blockers.
@@ -440,6 +452,175 @@ func printAnchors(anchors []cleanAnchor) {
 	}
 }
 
+// cleanComponent summarizes one connected component of the ticket link graph.
+type cleanComponent struct {
+	// members is every ticket ID in the component, sorted ascending.
+	members []string
+	// open is the number of non-closed tickets (open or in_progress).
+	open int
+	// closed is the number of closed tickets.
+	closed int
+	// openIDs lists the non-closed ticket IDs, sorted ascending, so an
+	// anchored component can name what is holding it in place.
+	openIDs []string
+}
+
+// size is the number of tickets in the component.
+func (c cleanComponent) size() int { return len(c.members) }
+
+// anchored reports whether the component contains a non-closed ticket. An
+// anchored component's closed tickets share the graph with that survivor.
+func (c cleanComponent) anchored() bool { return c.open > 0 }
+
+// status labels the component for the listing: "n/a" when there is nothing to
+// clean, "anchored" when a non-closed ticket is present, else "deletable".
+func (c cleanComponent) status() string {
+	switch {
+	case c.closed == 0:
+		return "n/a"
+	case c.anchored():
+		return "anchored"
+	default:
+		return "deletable"
+	}
+}
+
+// linkComponents builds the connected components of the symmetric link graph.
+// Links are undirected, so an edge exists between two tickets whether it is
+// recorded on one side or both. Links to IDs that do not exist (dangling
+// links) are skipped and self-links are no-ops; neither can panic. A ticket
+// with no links is a singleton component.
+func linkComponents(allTickets []*ticket.Ticket) []cleanComponent {
+	byID := make(map[string]*ticket.Ticket, len(allTickets))
+	parent := make(map[string]string, len(allTickets))
+	for _, t := range allTickets {
+		byID[t.ID] = t
+		if _, ok := parent[t.ID]; !ok {
+			parent[t.ID] = t.ID
+		}
+	}
+
+	var find func(string) string
+	find = func(id string) string {
+		for parent[id] != id {
+			parent[id] = parent[parent[id]] // path halving
+			id = parent[id]
+		}
+		return id
+	}
+	union := func(a, b string) {
+		ra, rb := find(a), find(b)
+		if ra != rb {
+			parent[rb] = ra
+		}
+	}
+
+	for _, t := range allTickets {
+		for _, linkID := range t.Links {
+			if _, ok := byID[linkID]; !ok {
+				continue
+			}
+			union(t.ID, linkID)
+		}
+	}
+
+	groups := make(map[string][]string)
+	for id := range parent {
+		root := find(id)
+		groups[root] = append(groups[root], id)
+	}
+
+	components := make([]cleanComponent, 0, len(groups))
+	for _, members := range groups {
+		sort.Strings(members)
+		c := cleanComponent{members: members}
+		for _, id := range members {
+			if byID[id].Status == ticket.StatusClosed {
+				c.closed++
+			} else {
+				c.open++
+				c.openIDs = append(c.openIDs, id)
+			}
+		}
+		components = append(components, c)
+	}
+
+	// Largest components first; ties break on the smallest member ID so the
+	// listing is deterministic.
+	sort.Slice(components, func(i, j int) bool {
+		if components[i].size() != components[j].size() {
+			return components[i].size() > components[j].size()
+		}
+		return components[i].members[0] < components[j].members[0]
+	})
+	return components
+}
+
+// printComponents renders the connected-component view of the ticket graph.
+func printComponents(components []cleanComponent) {
+	if len(components) == 0 {
+		fmt.Println("No tickets found.")
+		return
+	}
+
+	idxWidth := len(strconv.Itoa(len(components)))
+	sizeWidth, openWidth, closedWidth := len("size"), len("open"), len("closed")
+	for _, c := range components {
+		if w := len(strconv.Itoa(c.size())); w > sizeWidth {
+			sizeWidth = w
+		}
+		if w := len(strconv.Itoa(c.open)); w > openWidth {
+			openWidth = w
+		}
+		if w := len(strconv.Itoa(c.closed)); w > closedWidth {
+			closedWidth = w
+		}
+	}
+
+	fmt.Println("Components:")
+	fmt.Printf("%-*s  %-*s  %-*s  %-*s  %s\n",
+		idxWidth, "#", sizeWidth, "size", openWidth, "open", closedWidth, "closed", "status")
+	for i, c := range components {
+		status := c.status()
+		if c.anchored() && c.closed > 0 {
+			status += " (open: " + strings.Join(c.openIDs, ", ") + ")"
+		}
+		fmt.Printf("%-*d  %-*d  %-*d  %-*d  %s\n",
+			idxWidth, i+1, sizeWidth, c.size(), openWidth, c.open, closedWidth, c.closed, status)
+	}
+}
+
+// cleanComponentJSON is one connected component in `tk clean --components
+// --json`. OpenIDs lists the component's non-closed tickets.
+type cleanComponentJSON struct {
+	Size    int      `json:"size"`
+	Open    int      `json:"open"`
+	Closed  int      `json:"closed"`
+	Status  string   `json:"status"`
+	OpenIDs []string `json:"open_ids"`
+}
+
+// cleanComponentsJSON is the documented top-level schema of `tk clean
+// --components --json`.
+type cleanComponentsJSON struct {
+	Components []cleanComponentJSON `json:"components"`
+}
+
+// printComponentsJSON emits the component view as JSON and nothing else.
+func printComponentsJSON(components []cleanComponent) error {
+	out := cleanComponentsJSON{Components: make([]cleanComponentJSON, 0, len(components))}
+	for _, c := range components {
+		out.Components = append(out.Components, cleanComponentJSON{
+			Size:    c.size(),
+			Open:    c.open,
+			Closed:  c.closed,
+			Status:  c.status(),
+			OpenIDs: append([]string{}, c.openIDs...),
+		})
+	}
+	return writeCleanJSON(out)
+}
+
 // cleanPlanJSON is the documented top-level schema of `tk clean --json` in
 // dry-run mode. Counts describe the closed-ticket population; Anchors and
 // Tickets are emitted in deterministic order.
@@ -564,7 +745,18 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 	cleanable := deletionPlan(allTickets, policy)
 
-	// 3. Separate into deletable and blocked lists
+	// 3. Component view is a report only: it takes precedence over the
+	// deletion plan and --fix.
+	if cleanComponents {
+		components := linkComponents(allTickets)
+		if cleanJSON {
+			return printComponentsJSON(components)
+		}
+		printComponents(components)
+		return nil
+	}
+
+	// 4. Separate into deletable and blocked lists
 	var deletable []cleanableTicket
 	var blocked []cleanableTicket
 	for _, ct := range cleanable {
@@ -579,7 +771,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 	// for its block. Reporting only: this does not affect deletion semantics.
 	anchors := groupAnchors(blocked, allTickets)
 
-	// 4. Handle dry-run (default)
+	// 5. Handle dry-run (default)
 	if !cleanFix {
 		if cleanJSON {
 			return printCleanPlanJSON(cleanable, blocked, anchors)
@@ -638,7 +830,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// 5. Handle --fix mode (actual deletion)
+	// 6. Handle --fix mode (actual deletion)
 	if cleanJSON {
 		return printCleanFixJSON(deletable, blocked)
 	}
