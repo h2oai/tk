@@ -1256,11 +1256,13 @@ func TestCleanNoDanglingRefs(t *testing.T) {
 
 // cleanPlanJSONTest mirrors the documented `tk clean --json` dry-run schema.
 type cleanPlanJSONTest struct {
-	Closed    int                   `json:"closed"`
-	Deletable int                   `json:"deletable"`
-	Blocked   int                   `json:"blocked"`
-	Anchors   []cleanAnchorJSONTest `json:"anchors"`
-	Tickets   []cleanTicketJSONTest `json:"tickets"`
+	Closed     int                   `json:"closed"`
+	Deletable  int                   `json:"deletable"`
+	Blocked    int                   `json:"blocked"`
+	Direct     int                   `json:"direct"`
+	Transitive int                   `json:"transitive"`
+	Anchors    []cleanAnchorJSONTest `json:"anchors"`
+	Tickets    []cleanTicketJSONTest `json:"tickets"`
 }
 
 type cleanAnchorJSONTest struct {
@@ -1330,6 +1332,9 @@ func TestCleanJSONPlan(t *testing.T) {
 	plan := parseCleanPlan(t, output)
 	if plan.Closed != 2 || plan.Deletable != 1 || plan.Blocked != 1 {
 		t.Errorf("counts = closed %d, deletable %d, blocked %d; want 2, 1, 1", plan.Closed, plan.Deletable, plan.Blocked)
+	}
+	if plan.Direct != 1 || plan.Transitive != 0 {
+		t.Errorf("split = direct %d, transitive %d; want 1, 0", plan.Direct, plan.Transitive)
 	}
 
 	if len(plan.Anchors) != 1 {
@@ -1425,11 +1430,51 @@ func TestCleanJSONEmpty(t *testing.T) {
 	if plan.Closed != 0 || plan.Deletable != 0 || plan.Blocked != 0 {
 		t.Errorf("counts = %+v; want all zero", plan)
 	}
+	if plan.Direct != 0 || plan.Transitive != 0 {
+		t.Errorf("split = direct %d, transitive %d; want 0, 0", plan.Direct, plan.Transitive)
+	}
 	if plan.Anchors == nil || plan.Tickets == nil {
 		t.Errorf("anchors and tickets must be present as arrays: %s", output)
 	}
 	if strings.Contains(output, "No closed tickets found") {
 		t.Errorf("JSON mode must not emit prose: %s", output)
+	}
+}
+
+// TestCleanJSONDirectTransitiveCounts - --json reports the direct/transitive
+// split of the blocked set, and the two counts partition the blocked count.
+func TestCleanJSONDirectTransitiveCounts(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	// A 4-deep closed chain pinned by one open anchor: ids[3] is directly
+	// anchored, the other three are demoted transitively.
+	var ids []string
+	for i := 0; i < 4; i++ {
+		id, _ := ctx.exec("new", "Chain ticket")
+		id = strings.TrimSpace(id)
+		if i > 0 {
+			ctx.exec("dep", id, ids[i-1])
+		}
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		ctx.exec("close", id)
+	}
+	idOpen, _ := ctx.exec("new", "Open anchor")
+	idOpen = strings.TrimSpace(idOpen)
+	ctx.exec("dep", idOpen, ids[3])
+
+	output, err := ctx.exec("clean", "--json")
+	if err != nil {
+		t.Fatalf("clean --json command error: %v", err)
+	}
+	plan := parseCleanPlan(t, output)
+	if plan.Blocked != 4 || plan.Direct != 1 || plan.Transitive != 3 {
+		t.Errorf("counts = blocked %d, direct %d, transitive %d; want 4, 1, 3", plan.Blocked, plan.Direct, plan.Transitive)
+	}
+	if plan.Direct+plan.Transitive != plan.Blocked {
+		t.Errorf("direct %d + transitive %d != blocked %d", plan.Direct, plan.Transitive, plan.Blocked)
 	}
 }
 

@@ -51,6 +51,8 @@ is:
     "closed":    <int>,   // total closed tickets considered
     "deletable": <int>,   // closed tickets safe to delete
     "blocked":   <int>,   // closed tickets kept in place
+    "direct":    <int>,   // blocked tickets whose own edge points at an anchor
+    "transitive":<int>,   // blocked only via a referenced ticket that was itself blocked
     "anchors": [          // surviving non-candidates holding tickets back
       {"id": <string>, "status": <string>, "blocked_count": <int>}
     ],
@@ -625,11 +627,13 @@ func printComponentsJSON(components []cleanComponent) error {
 // dry-run mode. Counts describe the closed-ticket population; Anchors and
 // Tickets are emitted in deterministic order.
 type cleanPlanJSON struct {
-	Closed    int               `json:"closed"`
-	Deletable int               `json:"deletable"`
-	Blocked   int               `json:"blocked"`
-	Anchors   []cleanAnchorJSON `json:"anchors"`
-	Tickets   []cleanTicketJSON `json:"tickets"`
+	Closed     int               `json:"closed"`
+	Deletable  int               `json:"deletable"`
+	Blocked    int               `json:"blocked"`
+	Direct     int               `json:"direct"`
+	Transitive int               `json:"transitive"`
+	Anchors    []cleanAnchorJSON `json:"anchors"`
+	Tickets    []cleanTicketJSON `json:"tickets"`
 }
 
 // cleanAnchorJSON is one surviving non-candidate and the number of blocked
@@ -703,9 +707,13 @@ func printCleanPlanJSON(cleanable, blocked []cleanableTicket, anchors []cleanAnc
 			entry.Reason = normalizeRelation(ct.relation)
 			entry.BlockedBy = ct.blockedBy
 			entry.Anchor = ct.anchor
+			if ct.direct {
+				plan.Direct++
+			}
 		}
 		plan.Tickets = append(plan.Tickets, entry)
 	}
+	plan.Transitive = plan.Blocked - plan.Direct
 	return writeCleanJSON(plan)
 }
 
