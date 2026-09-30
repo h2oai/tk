@@ -1285,8 +1285,11 @@ func TestCleanAnchorSingleOpenAnchorOverChain(t *testing.T) {
 		t.Fatalf("clean command error: %v", err)
 	}
 
-	if !strings.Contains(output, "3 blocked - 1 surviving anchor(s)") {
-		t.Errorf("expected '3 blocked - 1 surviving anchor(s)', got: %s", output)
+	if !strings.Contains(output, "3 blocked - 1 directly anchored, 2 transitively blocked") {
+		t.Errorf("expected '3 blocked - 1 directly anchored, 2 transitively blocked', got: %s", output)
+	}
+	if !strings.Contains(output, "1 surviving anchor(s)") {
+		t.Errorf("expected '1 surviving anchor(s)', got: %s", output)
 	}
 	if !strings.Contains(output, "Anchors:") {
 		t.Errorf("expected anchor section, got: %s", output)
@@ -1330,8 +1333,11 @@ func TestCleanAnchorMissingID(t *testing.T) {
 		t.Fatalf("clean command error: %v", err)
 	}
 
-	if !strings.Contains(output, "1 blocked - 1 surviving anchor(s)") {
-		t.Errorf("expected '1 blocked - 1 surviving anchor(s)', got: %s", output)
+	if !strings.Contains(output, "1 blocked - 1 directly anchored, 0 transitively blocked") {
+		t.Errorf("expected '1 blocked - 1 directly anchored, 0 transitively blocked', got: %s", output)
+	}
+	if !strings.Contains(output, "1 surviving anchor(s)") {
+		t.Errorf("expected '1 surviving anchor(s)', got: %s", output)
 	}
 	if !strings.Contains(output, idB+" [missing] blocks 1") {
 		t.Errorf("expected [missing] anchor %s, got: %s", idB, output)
@@ -1368,8 +1374,11 @@ func TestCleanAnchorTwoDisjointAnchors(t *testing.T) {
 		t.Fatalf("clean command error: %v", err)
 	}
 
-	if !strings.Contains(output, "2 blocked - 2 surviving anchor(s)") {
-		t.Errorf("expected two anchors, got: %s", output)
+	if !strings.Contains(output, "2 blocked - 2 directly anchored, 0 transitively blocked") {
+		t.Errorf("expected '2 blocked - 2 directly anchored, 0 transitively blocked', got: %s", output)
+	}
+	if !strings.Contains(output, "2 surviving anchor(s)") {
+		t.Errorf("expected '2 surviving anchor(s)', got: %s", output)
 	}
 	if !strings.Contains(output, idOpen1+" [open] blocks 1") {
 		t.Errorf("expected anchor %s, got: %s", idOpen1, output)
@@ -1534,6 +1543,100 @@ func TestCleanBlockedListCap(t *testing.T) {
 		}
 		if got := countListed(output, ids); got != len(ids) {
 			t.Errorf("expected all %d tickets listed, got %d: %s", len(ids), got, output)
+		}
+	})
+}
+
+// TestCleanDirectTransitiveSplit - The blocked count is split into tickets
+// anchored by their own blocking edge and tickets demoted only as cascade.
+func TestCleanDirectTransitiveSplit(t *testing.T) {
+	t.Run("open anchor at head of chain yields one direct and N-1 transitive", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		// Build a 4-deep closed chain: ids[3] -> ids[2] -> ids[1] -> ids[0].
+		var ids []string
+		for i := 0; i < 4; i++ {
+			id, _ := ctx.exec("new", "Chain ticket")
+			id = strings.TrimSpace(id)
+			if i > 0 {
+				ctx.exec("dep", id, ids[i-1])
+			}
+			ids = append(ids, id)
+		}
+		for _, id := range ids {
+			ctx.exec("close", id)
+		}
+
+		// An open ticket depends on the head, directly anchoring only ids[3];
+		// the rest are demoted transitively.
+		idOpen, _ := ctx.exec("new", "Open anchor")
+		idOpen = strings.TrimSpace(idOpen)
+		ctx.exec("dep", idOpen, ids[3])
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+
+		if !strings.Contains(output, "4 blocked - 1 directly anchored, 3 transitively blocked") {
+			t.Errorf("expected '4 blocked - 1 directly anchored, 3 transitively blocked', got: %s", output)
+		}
+		if !strings.Contains(output, "1 surviving anchor(s)") {
+			t.Errorf("expected '1 surviving anchor(s)', got: %s", output)
+		}
+	})
+
+	t.Run("every blocked ticket directly anchored counts all as direct", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		// Each closed ticket has its own open dependant, so every block is
+		// directly anchored with no cascade.
+		for i := 0; i < 3; i++ {
+			id, _ := ctx.exec("new", "Blocked closed")
+			id = strings.TrimSpace(id)
+			ctx.exec("close", id)
+
+			dep, _ := ctx.exec("new", "Open dependant")
+			dep = strings.TrimSpace(dep)
+			ctx.exec("dep", dep, id)
+		}
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+
+		if !strings.Contains(output, "3 blocked - 3 directly anchored, 0 transitively blocked") {
+			t.Errorf("expected '3 blocked - 3 directly anchored, 0 transitively blocked', got: %s", output)
+		}
+	})
+
+	t.Run("cycle-only set reports zero blocked", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		idA, _ := ctx.exec("new", "Ticket A")
+		idA = strings.TrimSpace(idA)
+		idB, _ := ctx.exec("new", "Ticket B")
+		idB = strings.TrimSpace(idB)
+
+		ctx.exec("dep", idA, idB)
+		ctx.exec("dep", idB, idA)
+		ctx.exec("close", idA)
+		ctx.exec("close", idB)
+
+		output, err := ctx.exec("clean")
+		if err != nil {
+			t.Fatalf("clean command error: %v", err)
+		}
+
+		if !strings.Contains(output, "0 blocked") {
+			t.Errorf("expected '0 blocked' for a cycle-only set, got: %s", output)
+		}
+		if strings.Contains(output, "directly anchored") {
+			t.Errorf("cycle-only set must not report a direct/transitive split, got: %s", output)
 		}
 	})
 }

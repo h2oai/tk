@@ -59,6 +59,11 @@ type cleanableTicket struct {
 	anchor string
 	// relation is the relation of this ticket's own direct blocking edge.
 	relation string
+	// direct reports whether this ticket's own blocking edge points at a
+	// non-candidate (open, in-progress, or missing). A directly anchored
+	// ticket is blocked on its own; a transitive one is demoted only because
+	// a ticket it references was itself demoted.
+	direct bool
 }
 
 // blockEdge records the specific reference that demoted a candidate: the
@@ -150,6 +155,7 @@ func deletionPlan(allTickets []*ticket.Ticket) []cleanableTicket {
 			ct.blocked = true
 			ct.reason = reasons[t.ID]
 			ct.relation = blockedBy[t.ID].relation
+			ct.direct = !closedSet[blockedBy[t.ID].blockerID]
 			ct.anchor = findAnchor(t.ID, blockedBy, closedSet)
 		}
 		plan = append(plan, ct)
@@ -386,7 +392,15 @@ func runClean(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Found %d closed ticket(s):\n", totalClosed)
 		fmt.Printf("  %d deletable\n", numDeletable)
 		if numBlocked > 0 {
-			fmt.Printf("  %d blocked - %d surviving anchor(s)\n", numBlocked, len(anchors))
+			numDirect := 0
+			for _, ct := range blocked {
+				if ct.direct {
+					numDirect++
+				}
+			}
+			fmt.Printf("  %d blocked - %d directly anchored, %d transitively blocked\n",
+				numBlocked, numDirect, numBlocked-numDirect)
+			fmt.Printf("  %d surviving anchor(s)\n", len(anchors))
 		} else {
 			fmt.Printf("  %d blocked\n", numBlocked)
 		}
