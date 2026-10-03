@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/itchyny/gojq"
-	"github.com/lo5/tk/internal/ticket"
+	"github.com/h2oai/tk/internal/ticket"
 )
 
 // TicketJSON represents a ticket in JSON format

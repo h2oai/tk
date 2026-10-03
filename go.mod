@@ -1,4 +1,4 @@
-module github.com/lo5/tk
+module github.com/h2oai/tk
 
 go 1.25.5
 

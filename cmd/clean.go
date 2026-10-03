@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lo5/tk/internal/ticket"
+	"github.com/h2oai/tk/internal/ticket"
 	"github.com/spf13/cobra"
 )
 

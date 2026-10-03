@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/lo5/tk/internal/query"
+	"github.com/h2oai/tk/internal/query"
 	"github.com/spf13/cobra"
 )
 

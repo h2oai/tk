@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lo5/tk/internal/deptree"
-	"github.com/lo5/tk/internal/ticket"
+	"github.com/h2oai/tk/internal/deptree"
+	"github.com/h2oai/tk/internal/ticket"
 	"github.com/spf13/cobra"
 )
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lo5/tk/internal/ticket"
+	"github.com/h2oai/tk/internal/ticket"
 )
 
 // TestLinkCommand tests the link command (symmetric linking)

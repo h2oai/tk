@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lo5/tk/internal/ticket"
+	"github.com/h2oai/tk/internal/ticket"
 )
 
 // TestShowCommand tests the show command

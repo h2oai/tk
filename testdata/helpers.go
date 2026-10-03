@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lo5/tk/internal/ticket"
+	"github.com/h2oai/tk/internal/ticket"
 )
 
 // CreateTestStore creates a temporary store for testing

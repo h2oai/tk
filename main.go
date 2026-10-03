@@ -1,6 +1,6 @@
 package main
 
-import "github.com/lo5/tk/cmd"
+import "github.com/h2oai/tk/cmd"
 
 func main() {
 	cmd.Execute()

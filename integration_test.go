@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lo5/tk/internal/ticket"
-	"github.com/lo5/tk/testdata"
+	"github.com/h2oai/tk/internal/ticket"
+	"github.com/h2oai/tk/testdata"
 )
 
 // TestCompleteWorkflow tests the complete ticket workflow:

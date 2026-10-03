@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lo5/tk/internal/ticket"
+	"github.com/h2oai/tk/internal/ticket"
 )
 
 // Node represents a node in the dependency tree
