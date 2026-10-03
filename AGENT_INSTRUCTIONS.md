@@ -122,7 +122,8 @@ tk close <blocker-id> # Close the blocking ticket
 
 - **File issues for remaining work** - Create tickets with `tk new` for anything that needs follow-up
   - Create tickets for tracking strategic and/or discovered work (multi-session, dependencies, discovered work)
-- **Update ticket status** - Close finished work with `tk close <id>`
+- **Update ticket status** - Use `tk start <id>` when starting work, and close finished work with `tk close <id>`
+  - `tk start` MUST be used when starting work on a ticket
   - Work is NOT complete until tickets are properly closed
   - NEVER leave work in ambiguous state (e.g., started but unclear if done)
   - Ticket state is the source of truth for project progress
