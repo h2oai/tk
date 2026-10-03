@@ -18,7 +18,7 @@ var rootCmd = &cobra.Command{
 	Long: `tk - minimal ticket system with dependency tracking
 
 Tickets are stored as markdown files with YAML frontmatter in .tickets/
-Supports partial ID matching (e.g., 'tk show 5c4' matches 'nw-5c46')`,
+Supports partial ID matching (e.g., 'tk show fan' matches 'fanir7')`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		store = ticket.NewFileStore(ticketsDir)
 	},

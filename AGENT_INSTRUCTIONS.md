@@ -84,7 +84,7 @@ One trailing newline is trimmed, so heredoc, `printf` and file input store ident
 ### Maintenance
 - `tk prune` - Dry-run: show dangling references (refs to deleted tickets)
 - `tk prune --fix` - Actually remove dangling references from deps, links, and parent fields
-  - Use case: After manually deleting ticket files (e.g., `rm .tickets/x-abc1.md`)
+  - Use case: After manually deleting ticket files (e.g., `rm .tickets/fanir7.md`)
   - Ensures store consistency by cleaning up orphaned references
 
 ## Common Workflows

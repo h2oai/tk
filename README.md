@@ -1,6 +1,6 @@
 # tk
 
-`tk` is a minimal graph-based issue tracker for long-horizon AI agents tasks.
+`tk` is a minimal graph-based issue tracker for long-horizon AI agent tasks.
 
 `tk` is similar to [beads](https://github.com/steveyegge/beads), but stores everything as simple markdown files with YAML frontmatter — no database or daemon to manage. `tk` started out as a Go port of the [ticket](https://github.com/wedow/ticket) single-file bash script, inspired by Joe Armstrong's [Minimal Viable Program](https://joearms.github.io/published/2014-06-25-minimal-viable-program.html).
 
@@ -12,13 +12,57 @@
 
 ## Workflow
 
-Use `tk` only for long-horizon tasks that cannot be completed in one shot (say 200K context sans-compaction).
+[Install](#installation) `tk`, then append [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) to your `CLAUDE.md` or `AGENTS.md`. Customize as needed.
 
-To get started, [install](#installation) `tk` and append [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) to your `CLAUDE.md` or `AGENTS.md`. Customize as necessary to adapt to your workflow - there are no hard rules here.
+### When to use tk
 
-Enter plan mode with your AI agent, make a plan, ask the agent to *save the plan in `./.plans`, break it into 5-10 issues, each with a link to the original plan and file it in `tk`*.
-From this point on, you can simply clear the context and direct the agent to *fix issue x-h42g* or *run `tk ready` and fix the next available issue*. Or, run multiple agents on multiple worktrees if you're feeling lucky.
+Reach for `tk` when the work won't fit in a single context window.
 
+### The loop
+
+1. **Plan** with your agent until you have a concrete approach.
+
+2. **File** it as an epic plus ordered child tickets, chained so exactly one is ready at a time. Reference the plan with `--external-ref`; there is no fixed plan directory.
+
+   ```bash
+   epic=$(tk new "Rewrite parser" --type=epic)                          # fanir7
+   token=$(tk new "Tokenizer" --parent="$epic" --external-ref=plan.md)  # pivot3
+   parser=$(tk new "Parser" --parent="$epic" --external-ref=plan.md)    # miver8
+   tk chain "$epic" "$token" "$parser"
+   ```
+
+3. **Clear context** and start a fresh session, so only the tickets drive the work.
+
+4. **Claim** the next ready ticket in the epic: `tk ready "$epic"`, then `tk show pivo` (partial IDs match: `pivo` → `pivot3`) and `tk start pivo`.
+
+5. **Close** it with `tk close pivo`, then repeat from step 4.
+
+### Core commands
+
+```bash
+# Create and wire tickets (`tk new` prints the new ID)
+epic=$(tk new "Rewrite parser" --type=epic)     # fanir7
+tk new "Tokenizer" --parent="$epic"             # pivot3
+tk new "Parser" --parent="$epic"                # miver8
+tk dep <id> <dep-id>          # <id> depends on <dep-id>
+tk chain "$epic" <id> ...     # sequence an epic: one ready at a time
+tk new "Edge cases" --parent="$epic" -b - <<'EOF'
+## Acceptance Criteria
+- Handles `code`, $VARS and "quotes".
+EOF
+
+# Find, claim, finish
+tk ready                      # all ready tickets, priority order
+tk ready "$epic"              # ready tickets inside one epic
+tk blocked                    # open tickets waiting on dependencies
+tk show fan                   # partial IDs match: fan -> fanir7
+tk start <id>                 # status -> in_progress
+tk note <id> "..."            # timestamped progress note
+tk ls --status in_progress
+tk close <id>
+```
+
+Everything else — `link`, `clean`, `prune`, `query`, `edit` — lives under [All Commands](#all-commands).
 
 ## Key Features
 
@@ -27,88 +71,20 @@ From this point on, you can simply clear the context and direct the agent to *fi
 - **Git-friendly**: Store `.tickets/` in git (like `git-bug`) or `.gitignore` it and use as a local todo list
 - **Dependency tracking**: Define dependencies between tickets and visualize them as trees
 - **Cross-linking**: Link related tickets together (star by default, full mesh with `--all-pairs`)
-- **Partial ID matching**: Refer to tickets by any substring of their ID (e.g., `h42` matches `x-h42g`)
+- **Partial ID matching**: Refer to tickets by any substring of their ID (e.g., `fan` matches `fanir7`)
 - **jq-style queries**: Filter tickets with `jq` expressions
 
 
 ## Installation
 
 ```bash
-go install github.com/lo5/tk@latest
+go install github.com/h2oai/tk@latest
 ```
 
 This installs `tk` to `$GOPATH/bin` (or `$HOME/go/bin` by default). Ensure this directory is in your PATH:
 
 ```bash
 export PATH=$PATH:$HOME/go/bin
-```
-
-## Quick Start
-
-```bash
-# Create a new ticket
-tk new "Fix login page"
-
-# List all tickets
-tk ls
-
-# Show a ticket (partial ID matching)
-tk show h42
-
-# Add a dependency
-tk dep h42 8a2
-
-# View dependency tree
-tk dep tree h42
-
-# Update status
-tk start h42      # Mark as in_progress
-tk close h42      # Mark as closed
-
-# Create a ticket with a body. Free-form text (new's body, note text, query
-# filter) is passed inline, from stdin with -, or from a file with -F <path>.
-# A quoted heredoc needs no shell escaping.
-tk new "Fix parser" -b - <<'EOF'
-Handle `code`, $VARS and "quotes".
-EOF
-
-# Append notes
-tk note h42 "Made progress on authentication"
-tk note h42 -F notes.md
-
-# Query tickets
-tk ls --status in_progress
-tk query '.status == "in_progress"'
-tk query -F filter.jq
-
-# Find ready work (open/in-progress with all deps closed)
-tk ready
-
-# Find the next ready ticket inside an epic (children of the given ticket)
-tk ready h42
-
-# Sequence tickets inside an epic: make them children and chain them so that
-# exactly one is ready at a time (ticket[i] depends on ticket[i-1])
-tk chain h42 8a2 3f1 5c4
-
-# Link related tickets (first ticket is the hub; others are linked to it)
-tk link h42 8a2 3f1
-
-# Link every pair of tickets (full mesh)
-tk link --all-pairs h42 8a2 3f1
-
-# Remove a link (symmetric)
-tk unlink h42 8a2
-
-# Clean up closed tickets
-# By default links do not block deletion; non-closed deps/children still do.
-tk clean              # Dry-run: show what would be deleted
-tk clean --fix        # Actually delete closed tickets
-tk clean --links=block  # Historical behavior: links also block deletion
-
-# Clean up dangling references
-tk prune              # Dry-run: show what would be cleaned
-tk prune --fix        # Actually remove dangling references
 ```
 
 ## Cleaning Closed Tickets
@@ -135,7 +111,7 @@ blocking under `--links=block`. `clean` never rewrites dangling references; use
 tk - minimal ticket system with dependency tracking
 
 Tickets are stored as markdown files with YAML frontmatter in .tickets/
-Supports partial ID matching (e.g., 'tk show h42' matches 'x-h42g')
+Supports partial ID matching (e.g., 'tk show fan' matches 'fanir7')
 
 Usage:
   tk [command]
@@ -156,7 +132,7 @@ Available Commands:
   note        Append timestamped note to ticket
   prune       Remove dangling references from tickets
   query       Output tickets as JSON
-  ready       List ready tickets (optionally scoped to a ticket's children)
+  ready       List ready tickets
   reopen      Set ticket status to open
   rm          Delete a ticket
   show        Display a ticket
@@ -178,7 +154,7 @@ Tickets are markdown files stored in `.tickets/{id}.md` with YAML frontmatter:
 
 ```yaml
 ---
-id: x-h42g
+id: fanir7
 status: open
 created: 2025-01-12T10:30:00Z
 deps: []
