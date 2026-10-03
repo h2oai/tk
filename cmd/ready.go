@@ -8,10 +8,15 @@ import (
 )
 
 var readyCmd = &cobra.Command{
-	Use:   "ready",
+	Use:   "ready [ticket-id]",
 	Short: "List ready tickets",
-	Long:  `List open/in-progress tickets with all dependencies resolved.`,
-	RunE:  runReady,
+	Long: `List open/in-progress tickets with all dependencies resolved.
+
+With no arguments, lists every ready ticket. With a ticket id, lists only
+ready tickets whose parent is that ticket, which is useful for finding the
+next available work inside an epic.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runReady,
 }
 
 var readySort string
@@ -27,14 +32,31 @@ func runReady(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := ticket.SortBy(tickets, readySort); err != nil {
-		return err
-	}
-
-	// Build status map
+	// Build the status map from all tickets so dependency resolution stays
+	// global even when the listing is scoped to one ticket's children.
 	statusMap := make(map[string]ticket.Status)
 	for _, t := range tickets {
 		statusMap[t.ID] = t.Status
+	}
+
+	// Scope to children of the given ticket when an id is supplied.
+	if len(args) == 1 {
+		target, err := store.Get(args[0])
+		if err != nil {
+			return err
+		}
+
+		children := make([]*ticket.Ticket, 0, len(tickets))
+		for _, t := range tickets {
+			if t.Parent == target.ID {
+				children = append(children, t)
+			}
+		}
+		tickets = children
+	}
+
+	if err := ticket.SortBy(tickets, readySort); err != nil {
+		return err
 	}
 
 	// Filter ready tickets (preserves sort order)

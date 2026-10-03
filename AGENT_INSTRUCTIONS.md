@@ -6,6 +6,7 @@ This project uses **tk** for ticket tracking. Tickets are stored as markdown fil
 
 ```bash
 tk ready              # Find available work (no blockers)
+tk ready <epic-id>    # Find the next available work inside an epic
 tk show <id>          # View ticket details
 tk start <id>         # Claim work (set status to in_progress)
 tk close <id>         # Complete work (set status to closed)
@@ -65,6 +66,7 @@ tk ls --status=open   # List all open tickets
 ### Starting work:
 ```bash
 tk ready              # Find available work
+tk ready <epic-id>    # Next available work inside an epic
 tk show <id>          # Review ticket details
 tk start <id>         # Claim it
 ```

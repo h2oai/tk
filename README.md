@@ -72,6 +72,12 @@ tk note h42 "Made progress on authentication"
 tk ls --status in_progress
 tk query '.status == "in_progress"'
 
+# Find ready work (open/in-progress with all deps closed)
+tk ready
+
+# Find the next ready ticket inside an epic (children of the given ticket)
+tk ready h42
+
 # Link related tickets (first ticket is the hub; others are linked to it)
 tk link h42 8a2 3f1
 
@@ -136,7 +142,7 @@ Available Commands:
   note        Append timestamped note to ticket
   prune       Remove dangling references from tickets
   query       Output tickets as JSON
-  ready       List ready tickets
+  ready       List ready tickets (optionally scoped to a ticket's children)
   reopen      Set ticket status to open
   rm          Delete a ticket
   show        Display a ticket

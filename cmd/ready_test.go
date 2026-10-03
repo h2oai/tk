@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lo5/tk/internal/ticket"
 )
 
 // TestReadyCommand tests the ready command
@@ -554,6 +556,174 @@ func TestReadyInProgressStatus(t *testing.T) {
 
 		if !strings.Contains(output, parent) {
 			t.Error("in_progress ticket with closed deps should be ready")
+		}
+	})
+}
+
+// TestReadyScopedToChildren tests `tk ready <id>` scoping to parent children.
+func TestReadyScopedToChildren(t *testing.T) {
+	t.Run("lists only ready children and excludes unrelated tickets", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		epic, _ := ctx.exec("new", "Epic", "--type", "epic")
+		epic = strings.TrimSpace(epic)
+
+		// Create the unrelated ticket before --parent is set, since cobra flag
+		// values persist across Execute calls within a test.
+		outside, _ := ctx.exec("new", "Outside")
+		outside = strings.TrimSpace(outside)
+
+		child, _ := ctx.exec("new", "Child", "--parent", epic)
+		child = strings.TrimSpace(child)
+
+		closedChild, _ := ctx.exec("new", "Closed Child", "--parent", epic)
+		closedChild = strings.TrimSpace(closedChild)
+		ctx.exec("close", closedChild)
+
+		output, err := ctx.exec("ready", epic)
+		if err != nil {
+			t.Fatalf("ready <id> error: %v", err)
+		}
+
+		if !strings.Contains(output, child) {
+			t.Errorf("scoped ready should include ready child %s", child)
+		}
+		if strings.Contains(output, closedChild) {
+			t.Errorf("scoped ready should not include closed child %s", closedChild)
+		}
+		if strings.Contains(output, outside) {
+			t.Errorf("scoped ready should not include unrelated ticket %s", outside)
+		}
+		if strings.Contains(output, epic) {
+			t.Errorf("scoped ready should not include the target ticket %s", epic)
+		}
+	})
+
+	t.Run("blocker outside the scope still blocks a child", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		epic, _ := ctx.exec("new", "Epic", "--type", "epic")
+		epic = strings.TrimSpace(epic)
+
+		blocker, _ := ctx.exec("new", "External Blocker")
+		blocker = strings.TrimSpace(blocker)
+
+		child, _ := ctx.exec("new", "Blocked Child", "--parent", epic)
+		child = strings.TrimSpace(child)
+		ctx.exec("dep", child, blocker)
+
+		output, err := ctx.exec("ready", epic)
+		if err != nil {
+			t.Fatalf("ready <id> error: %v", err)
+		}
+		if strings.Contains(output, child) {
+			t.Errorf("scoped ready should exclude child %s blocked by an out-of-scope dep", child)
+		}
+	})
+
+	t.Run("accepts a partial id", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		mk := func(id, title, parent string) {
+			t.Helper()
+			err := ctx.store().Create(&ticket.Ticket{
+				ID:       id,
+				Status:   ticket.StatusOpen,
+				Deps:     []string{},
+				Links:    []string{},
+				Created:  time.Now().UTC(),
+				Type:     ticket.TypeEpic,
+				Priority: 2,
+				Parent:   parent,
+				Title:    title,
+			})
+			if err != nil {
+				t.Fatalf("failed to create ticket %s: %v", id, err)
+			}
+		}
+
+		mk("epic-abc", "Epic", "")
+		mk("child-xy", "Child", "epic-abc")
+
+		output, err := ctx.exec("ready", "epic-a")
+		if err != nil {
+			t.Fatalf("ready with partial id error: %v", err)
+		}
+		if !strings.Contains(output, "child-xy") {
+			t.Errorf("partial id should resolve and list child, got: %s", output)
+		}
+	})
+
+	t.Run("empty scope prints nothing", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		epic, _ := ctx.exec("new", "Lonely Epic", "--type", "epic")
+		epic = strings.TrimSpace(epic)
+
+		output, err := ctx.exec("ready", epic)
+		if err != nil {
+			t.Fatalf("ready <id> error: %v", err)
+		}
+		if strings.TrimSpace(output) != "" {
+			t.Errorf("expected no output for epic without children, got: %q", output)
+		}
+	})
+
+	t.Run("unknown id errors", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		_, err := ctx.exec("ready", "zzzzzz")
+		if err == nil {
+			t.Fatal("expected error for unknown id")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Errorf("expected not-found error, got: %v", err)
+		}
+	})
+
+	t.Run("ambiguous id errors", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		mk := func(id string) {
+			t.Helper()
+			err := ctx.store().Create(&ticket.Ticket{
+				ID:       id,
+				Status:   ticket.StatusOpen,
+				Deps:     []string{},
+				Links:    []string{},
+				Created:  time.Now().UTC(),
+				Type:     ticket.TypeTask,
+				Priority: 2,
+				Title:    "Ticket " + id,
+			})
+			if err != nil {
+				t.Fatalf("failed to create ticket %s: %v", id, err)
+			}
+		}
+		mk("amb-one")
+		mk("amb-two")
+
+		_, err := ctx.exec("ready", "amb")
+		if err == nil {
+			t.Fatal("expected error for ambiguous id")
+		}
+		if !strings.Contains(err.Error(), "ambiguous") {
+			t.Errorf("expected ambiguous error, got: %v", err)
+		}
+	})
+
+	t.Run("rejects more than one positional argument", func(t *testing.T) {
+		ctx, cleanup := setupTestCmd(t)
+		defer cleanup()
+
+		if _, err := ctx.exec("ready", "id1", "id2"); err == nil {
+			t.Fatal("expected error for more than one positional argument")
 		}
 	})
 }
