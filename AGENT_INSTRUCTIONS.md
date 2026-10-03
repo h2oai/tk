@@ -7,6 +7,7 @@ This project uses **tk** for ticket tracking. Tickets are stored as markdown fil
 ```bash
 tk ready              # Find available work (no blockers)
 tk ready <epic-id>    # Find the next available work inside an epic
+tk chain <epic-id> <id> <id> ...   # Sequence epic children so one is ready at a time
 tk show <id>          # View ticket details
 tk start <id>         # Claim work (set status to in_progress)
 tk close <id>         # Complete work (set status to closed)
@@ -44,6 +45,7 @@ tk ls --status=open   # List all open tickets
 - `tk reopen <id>` - Set status to open
 - `tk note <id> "..."` - Append timestamped note to ticket
 - `tk dep <id> <dependency-id>` - Add dependency (first ticket depends on second)
+- `tk chain <epic-id> <ticket-id>...` - Make each ticket a child of the epic and chain them sequentially (ticket[i] depends on ticket[i-1]) so `tk ready <epic-id>` yields exactly one runnable ticket at a time. Idempotent: re-running adds nothing.
 - `tk undep <id> <dependency-id>` - Remove dependency
 - `tk link <hub-id> <id> [id...]` - Create symmetric links (bidirectional). By default the first ticket is the hub, linked to each of the rest (a star); the remaining tickets are not linked to each other
 - `tk link --all-pairs <id> <id> [id...]` - Link every pair of the supplied tickets (full mesh)
@@ -67,6 +69,7 @@ tk ls --status=open   # List all open tickets
 ```bash
 tk ready              # Find available work
 tk ready <epic-id>    # Next available work inside an epic
+tk chain <epic> <id> <id> ...   # Chain epic children into a sequential queue
 tk show <id>          # Review ticket details
 tk start <id>         # Claim it
 ```

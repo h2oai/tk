@@ -78,6 +78,10 @@ tk ready
 # Find the next ready ticket inside an epic (children of the given ticket)
 tk ready h42
 
+# Sequence tickets inside an epic: make them children and chain them so that
+# exactly one is ready at a time (ticket[i] depends on ticket[i-1])
+tk chain h42 8a2 3f1 5c4
+
 # Link related tickets (first ticket is the hub; others are linked to it)
 tk link h42 8a2 3f1
 
@@ -129,6 +133,7 @@ Usage:
 
 Available Commands:
   blocked     List blocked tickets
+  chain       Sequence tickets as children of an epic
   clean       Delete all closed tickets
   close       Set ticket status to closed
   closed      List recently closed tickets
