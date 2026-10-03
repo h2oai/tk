@@ -35,15 +35,14 @@ tk ls --status=open   # List all open tickets
 - `tk new "Ticket title"` - Create a new ticket (defaults to status: open, type: task, priority: 2)
   - `--type=bug|feature|task|epic|chore` - Ticket type
   - `-p, --priority 0-4` - Priority (0=critical, 2=medium, 4=backlog)
-  - `-d, --description "..."` - Description text
+  - `-b, --body "..."` - Body text, stored verbatim (`-b -` reads stdin)
+  - `-F, --file <path>` - Read body from a file
   - `-a, --assignee username` - Assign to someone
   - `--parent <id>` - Parent ticket ID
-  - `--acceptance "..."` - Acceptance criteria
-  - `--design "..."` - Design notes
   - `--external-ref "..."` - External reference (e.g., gh-123)
 - `tk close <id>` - Set status to closed (mark complete)
 - `tk reopen <id>` - Set status to open
-- `tk note <id> "..."` - Append timestamped note to ticket
+- `tk note <id> "..."` - Append timestamped note to ticket (`-` reads stdin, `-F <path>` reads a file)
 - `tk dep <id> <dependency-id>` - Add dependency (first ticket depends on second)
 - `tk chain <epic-id> <ticket-id>...` - Make each ticket a child of the epic and chain them sequentially (ticket[i] depends on ticket[i-1]) so `tk ready <epic-id>` yields exactly one runnable ticket at a time. Idempotent: re-running adds nothing.
 - `tk undep <id> <dependency-id>` - Remove dependency
@@ -56,6 +55,31 @@ tk ls --status=open   # List all open tickets
 - `tk query '.priority == "0"'` - Query with jq-style filters
 - `tk query '.status == "open"'` - Find open tickets
 - `tk query '.type == "bug"'` - Find bugs
+- `tk query -` / `tk query -F filter.jq` - Read the filter from stdin / a file
+
+### Passing Free-Form Text
+
+`tk new` (body), `tk note` (note) and `tk query` (filter) all take text **inline**, from **stdin** with `-`, or from a **file** with `-F/--file <path>`. For anything containing backticks, `$`, quotes, backslashes or newlines, use a quoted heredoc; nothing inside it needs escaping:
+
+```bash
+tk new "Fix parser" -b - <<'EOF'
+Handle `code spans`, $VARS, "quotes" and \backslashes.
+
+## Acceptance Criteria
+
+- Parser accepts all of the above.
+EOF
+
+tk note <id> - <<'EOF'
+Root cause is `parse()` at L42 -- see $HOME handling.
+EOF
+
+tk query - <<'EOF'
+.status == "open" and .priority == "0"
+EOF
+```
+
+One trailing newline is trimmed, so heredoc, `printf` and file input store identical text. Stdin is read only when `-` is given. Write `## Design` / `## Acceptance Criteria` sections directly in the body.
 
 ### Maintenance
 - `tk prune` - Dry-run: show dangling references (refs to deleted tickets)

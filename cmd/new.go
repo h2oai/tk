@@ -14,14 +14,20 @@ var newCmd = &cobra.Command{
 	Use:   "new [title]",
 	Short: "Create a new ticket",
 	Long: `Create a new ticket with the specified title and options.
-Prints the generated ticket ID on success.`,
+Prints the generated ticket ID on success.
+
+The body is passed inline with -b, from stdin with -b -, or from a file
+with -F <path>. Stdin input needs no shell quoting:
+
+  tk new "Fix parser" -b - <<'EOF'
+  Handle ` + "`code`" + `, $VARS and "quotes".
+  EOF`,
 	RunE: runNew,
 }
 
 var (
-	newDescription string
-	newDesign      string
-	newAcceptance  string
+	newBody        string
+	newFile        string
 	newPriority    int
 	newType        string
 	newAssignee    string
@@ -32,9 +38,8 @@ var (
 func init() {
 	rootCmd.AddCommand(newCmd)
 
-	newCmd.Flags().StringVarP(&newDescription, "description", "d", "", "Description text")
-	newCmd.Flags().StringVar(&newDesign, "design", "", "Design notes")
-	newCmd.Flags().StringVar(&newAcceptance, "acceptance", "", "Acceptance criteria")
+	newCmd.Flags().StringVarP(&newBody, "body", "b", "", "Body text, verbatim (- reads stdin)")
+	newCmd.Flags().StringVarP(&newFile, "file", "F", "", "Read body from file (- reads stdin)")
 	newCmd.Flags().IntVarP(&newPriority, "priority", "p", 2, "Priority 0-4, 0=highest")
 	newCmd.Flags().StringVarP(&newType, "type", "t", "task", "Type (bug|feature|task|epic|chore)")
 	newCmd.Flags().StringVarP(&newAssignee, "assignee", "a", "", "Assignee")
@@ -55,6 +60,11 @@ func runNew(cmd *cobra.Command, args []string) error {
 		if err == nil {
 			assignee = strings.TrimSpace(string(out))
 		}
+	}
+
+	body, err := resolveText(cmd, newBody, newFile, "--body")
+	if err != nil {
+		return err
 	}
 
 	// Validate type
@@ -82,23 +92,6 @@ func runNew(cmd *cobra.Command, args []string) error {
 		if i == maxRetries-1 {
 			return fmt.Errorf("failed to generate unique ticket ID after %d attempts", maxRetries)
 		}
-	}
-
-	// Build body content
-	var bodyParts []string
-	if newDescription != "" {
-		bodyParts = append(bodyParts, newDescription)
-	}
-	if newDesign != "" {
-		bodyParts = append(bodyParts, "## Design\n\n"+newDesign)
-	}
-	if newAcceptance != "" {
-		bodyParts = append(bodyParts, "## Acceptance Criteria\n\n"+newAcceptance)
-	}
-
-	body := ""
-	if len(bodyParts) > 0 {
-		body = strings.Join(bodyParts, "\n\n")
 	}
 
 	t := &ticket.Ticket{

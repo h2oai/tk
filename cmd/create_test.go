@@ -27,9 +27,10 @@ func setupTestCmd(t *testing.T) (*testContext, func()) {
 
 	cleanup := func() {
 		// Reset flags to defaults
-		newDescription = ""
-		newDesign = ""
-		newAcceptance = ""
+		newBody = ""
+		newFile = ""
+		noteFile = ""
+		queryFile = ""
 		newPriority = 2
 		newType = "task"
 		newAssignee = ""
@@ -153,9 +154,7 @@ func TestNewCommand(t *testing.T) {
 		defer cleanup()
 
 		output, err := ctx.exec("new", "Full Ticket",
-			"--description", "This is a description",
-			"--design", "Design notes here",
-			"--acceptance", "Accept criteria",
+			"--body", "This is a body",
 			"--type", "bug",
 			"--priority", "1",
 			"--assignee", "alice",
@@ -186,14 +185,8 @@ func TestNewCommand(t *testing.T) {
 		if t2.ExternalRef != "BUG-123" {
 			t.Errorf("ExternalRef = %v, want %v", t2.ExternalRef, "BUG-123")
 		}
-		if !strings.Contains(t2.Body, "This is a description") {
-			t.Error("Body missing description")
-		}
-		if !strings.Contains(t2.Body, "Design notes here") {
-			t.Error("Body missing design")
-		}
-		if !strings.Contains(t2.Body, "Accept criteria") {
-			t.Error("Body missing acceptance criteria")
+		if t2.Body != "This is a body" {
+			t.Errorf("Body = %q, want %q", t2.Body, "This is a body")
 		}
 	})
 

@@ -14,7 +14,7 @@ func TestShowCommand(t *testing.T) {
 		ctx, cleanup := setupTestCmd(t)
 		defer cleanup()
 
-		id, _ := ctx.exec("new", "Test Ticket", "--description", "Test description")
+		id, _ := ctx.exec("new", "Test Ticket", "--body", "Test description")
 		id = strings.TrimSpace(id)
 
 		output, err := ctx.exec("show", id)

@@ -290,7 +290,7 @@ func TestAddNoteCommand(t *testing.T) {
 		defer cleanup()
 
 		// Create a test ticket with description
-		id, err := ctx.exec("new", "Preserve Body Test", "--description", "Original description")
+		id, err := ctx.exec("new", "Preserve Body Test", "--body", "Original description")
 		if err != nil {
 			t.Fatalf("failed to create ticket: %v", err)
 		}
@@ -351,8 +351,7 @@ func TestAddNoteCommand(t *testing.T) {
 		}
 		id = strings.TrimSpace(id)
 
-		// Try to add note without providing text (in TTY mode, which is the test default)
-		// This should fail because we don't provide args and stdin is a TTY
+		// Without text or "-", stdin is never read implicitly
 		_, err = ctx.exec("note", id)
 		if err == nil {
 			t.Error("expected error when no note provided, got nil")
@@ -434,9 +433,8 @@ func TestAddNoteFromStdin(t *testing.T) {
 			w.Close()
 		}()
 
-		// Execute add-note with no args (should read from stdin)
-		// Reset command args
-		rootCmd.SetArgs([]string{"--dir", ctx.ticketsDir, "note", id})
+		// Execute note with "-" (reads from stdin)
+		rootCmd.SetArgs([]string{"--dir", ctx.ticketsDir, "note", id, "-"})
 
 		// Capture output
 		buf := new(bytes.Buffer)

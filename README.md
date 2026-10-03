@@ -65,12 +65,21 @@ tk dep tree h42
 tk start h42      # Mark as in_progress
 tk close h42      # Mark as closed
 
+# Create a ticket with a body. Free-form text (new's body, note text, query
+# filter) is passed inline, from stdin with -, or from a file with -F <path>.
+# A quoted heredoc needs no shell escaping.
+tk new "Fix parser" -b - <<'EOF'
+Handle `code`, $VARS and "quotes".
+EOF
+
 # Append notes
 tk note h42 "Made progress on authentication"
+tk note h42 -F notes.md
 
 # Query tickets
 tk ls --status in_progress
 tk query '.status == "in_progress"'
+tk query -F filter.jq
 
 # Find ready work (open/in-progress with all deps closed)
 tk ready
