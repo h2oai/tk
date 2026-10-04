@@ -9,10 +9,12 @@ import (
 )
 
 const (
-	ansiReset  = "\x1b[0m"
-	ansiDim    = "\x1b[2m"
-	ansiRed    = "\x1b[31m"
-	ansiYellow = "\x1b[33m"
+	ansiReset   = "\x1b[0m"
+	ansiDim     = "\x1b[2m"
+	ansiRed     = "\x1b[31m"
+	ansiYellow  = "\x1b[33m"
+	ansiGreen   = "\x1b[32m"
+	ansiMagenta = "\x1b[35m"
 )
 
 // Render writes ready tickets as a tree of parent links. Ancestors of ready
@@ -87,22 +89,49 @@ func Render(w io.Writer, all, ready []*ticket.Ticket, sortField string, color bo
 }
 
 func line(t *ticket.Ticket, ready, color bool) string {
-	s := fmt.Sprintf("%s P%d %s %s", t.ID, t.Priority, t.Type, t.Title)
+	suffix := ""
 	if !ready {
-		s += fmt.Sprintf(" (%s)", t.Status)
+		suffix = fmt.Sprintf(" (%s)", t.Status)
 	}
 	if !color {
+		return fmt.Sprintf("%s P%d %s %s%s", t.ID, t.Priority, t.Type, t.Title, suffix)
+	}
+	if !ready {
+		return ansiDim + fmt.Sprintf("%s P%d %s %s%s", t.ID, t.Priority, t.Type, t.Title, suffix) + ansiReset
+	}
+	return fmt.Sprintf("%s %s %s %s", t.ID,
+		paint(priorityColor(t.Priority), fmt.Sprintf("P%d", t.Priority)),
+		paint(typeColor(t.Type), string(t.Type)),
+		t.Title)
+}
+
+func priorityColor(p int) string {
+	switch {
+	case p == 0:
+		return ansiRed
+	case p == 1:
+		return ansiYellow
+	case p >= 3:
+		return ansiDim
+	}
+	return ""
+}
+
+func typeColor(t ticket.Type) string {
+	switch t {
+	case ticket.TypeBug:
+		return ansiRed
+	case ticket.TypeFeature:
+		return ansiGreen
+	case ticket.TypeEpic:
+		return ansiMagenta
+	}
+	return ""
+}
+
+func paint(code, s string) string {
+	if code == "" {
 		return s
 	}
-	switch {
-	case !ready:
-		return ansiDim + s + ansiReset
-	case t.Priority == 0:
-		return ansiRed + s + ansiReset
-	case t.Priority == 1:
-		return ansiYellow + s + ansiReset
-	case t.Priority >= 3:
-		return ansiDim + s + ansiReset
-	}
-	return s
+	return code + s + ansiReset
 }
