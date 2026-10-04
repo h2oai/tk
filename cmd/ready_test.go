@@ -579,7 +579,7 @@ func TestReadyScopedToChildren(t *testing.T) {
 		outside, _ := ctx.exec("new", "Outside")
 		outside = strings.TrimSpace(outside)
 
-		child, _ := ctx.exec("new", "Child", "--parent", epic)
+		child, _ := ctx.exec("new", "Child", "-t", "task", "--parent", epic)
 		child = strings.TrimSpace(child)
 
 		closedChild, _ := ctx.exec("new", "Closed Child", "--parent", epic)
@@ -731,4 +731,72 @@ func TestReadyScopedToChildren(t *testing.T) {
 			t.Fatal("expected error for more than one positional argument")
 		}
 	})
+}
+
+func TestReadyTree(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	epic, _ := ctx.exec("new", "Epic", "-t", "epic")
+	epic = strings.TrimSpace(epic)
+	a, _ := ctx.exec("new", "First", "-t", "task", "--parent", epic)
+	a = strings.TrimSpace(a)
+	b, _ := ctx.exec("new", "Second", "-t", "task", "--parent", epic)
+	b = strings.TrimSpace(b)
+	ctx.exec("dep", b, a)
+	ctx.exec("start", epic)
+	loose, _ := ctx.exec("new", "Loose", "-t", "task")
+	loose = strings.TrimSpace(loose)
+
+	output, err := ctx.exec("ready", "--tree")
+	if err != nil {
+		t.Fatalf("ready --tree error: %v", err)
+	}
+	if !strings.Contains(output, "└── "+a+" ") && !strings.Contains(output, "├── "+a+" ") {
+		t.Errorf("expected %s nested under epic:\n%s", a, output)
+	}
+	if strings.Contains(output, b) {
+		t.Errorf("blocked ticket %s should not appear:\n%s", b, output)
+	}
+	if !strings.Contains(output, loose+" P2 task Loose") {
+		t.Errorf("expected root ticket line for %s:\n%s", loose, output)
+	}
+	if strings.Contains(output, "\x1b[") {
+		t.Errorf("no ANSI escapes expected when stdout is not a TTY:\n%q", output)
+	}
+}
+
+func TestReadyTreeContextParent(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	epic, _ := ctx.exec("new", "Epic", "-t", "epic")
+	epic = strings.TrimSpace(epic)
+	child, _ := ctx.exec("new", "Child", "-t", "task", "--parent", epic)
+	child = strings.TrimSpace(child)
+	ctx.exec("close", epic)
+
+	output, _ := ctx.exec("ready", "--tree")
+	if !strings.Contains(output, "(closed)") || !strings.Contains(output, child) {
+		t.Errorf("expected closed epic as context parent of %s:\n%s", child, output)
+	}
+}
+
+func TestReadyTreeEmptyAndInterval(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	output, _ := ctx.exec("ready", "--tree")
+	if !strings.Contains(output, "no ready tickets") {
+		t.Errorf("expected empty message, got %q", output)
+	}
+
+	if _, err := ctx.exec("ready", "--watch", "-n", "0"); err == nil {
+		t.Error("expected error for non-positive interval")
+	}
+
+	// Under test stdout is a pipe, so --watch renders once and exits.
+	if _, err := ctx.exec("ready", "--watch", "-n", "5"); err != nil {
+		t.Errorf("non-TTY watch should print once: %v", err)
+	}
 }

@@ -40,6 +40,9 @@ func setupTestCmd(t *testing.T) (*testContext, func()) {
 		listSort = "date"
 		blockedSort = "date"
 		readySort = "priority"
+		readyTree = false
+		readyWatch = false
+		readyInterval = 5
 		closedLimit = 20
 		rmForce = false
 		pruneFix = false

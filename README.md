@@ -54,6 +54,8 @@ EOF
 # Find, claim, finish
 tk ready                      # all ready tickets, priority order
 tk ready "$epic"              # ready tickets inside one epic
+tk ready --tree               # ready tickets as a parent tree
+tk ready --watch [-n 5]       # live tree, refreshed every N seconds
 tk blocked                    # open tickets waiting on dependencies
 tk show fan                   # partial IDs match: fan -> fanir7
 tk start <id>                 # status -> in_progress

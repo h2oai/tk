@@ -48,7 +48,7 @@ go run main.go [command]
 - `list.go`: List tickets with optional status filtering
 - `show.go`: Display ticket details
 - `dep.go`: Dependency management (`dep`, `undep`, `dep tree` subcommands)
-- `status.go`, `ready.go`, `blocked.go`, `closed.go`: Status transitions
+- `status.go`, `ready.go`, `blocked.go`, `closed.go`: Status transitions (`ready` also has `--tree` and `--watch`/`-n` for a live parent tree)
 - `edit.go`: Opens ticket in `$EDITOR`
 - `note.go`: Append timestamped notes to tickets
 - `query.go`: jq-style filtering using gojq library
@@ -62,6 +62,8 @@ go run main.go [command]
 
 **`internal/deptree/`**: Dependency tree visualization
 - `tree.go`: Builds and renders ASCII dependency trees with cycle detection, deduplication (unless `--full`), and proper indentation
+
+**`internal/readytree/`**: Renders ready tickets as a tree over `parent` links; non-ready ancestors appear as dim context nodes; ANSI colour by priority is optional
 
 **`internal/query/`**: Query/filter functionality
 - `converter.go`: Converts tickets to JSON and applies jq filters using the gojq library
