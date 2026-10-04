@@ -36,7 +36,7 @@ func runClosed(cmd *cobra.Command, args []string) error {
 			break
 		}
 		if t.Status == ticket.StatusClosed || t.Status == "done" {
-			fmt.Printf("%-8s [%s] - %s\n", t.ID, t.Status, t.Title)
+			fmt.Printf("%s - %s\n", formatTicketPrefix(t), t.Title)
 			count++
 		}
 	}

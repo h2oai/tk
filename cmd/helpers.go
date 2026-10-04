@@ -7,6 +7,12 @@ import (
 	"github.com/h2oai/tk/internal/ticket"
 )
 
+// formatTicketPrefix renders the common "<id> [P<p>][<status>][<type>]" prefix
+// shared by every ticket listing command (ls, ready, blocked, closed).
+func formatTicketPrefix(t *ticket.Ticket) string {
+	return fmt.Sprintf("%-8s [P%d][%s][%s]", t.ID, t.Priority, t.Status, t.Type)
+}
+
 // formatBlockingTickets formats a list of tickets for error messages
 func formatBlockingTickets(tickets []*ticket.Ticket) string {
 	var lines []string

@@ -73,7 +73,7 @@ func runBlocked(cmd *cobra.Command, args []string) error {
 	// Print
 	for _, b := range blocked {
 		blockersStr := "[" + strings.Join(b.blockers, ", ") + "]"
-		fmt.Printf("%-8s [P%d][%s] - %s <- %s\n", b.ticket.ID, b.ticket.Priority, b.ticket.Status, b.ticket.Title, blockersStr)
+		fmt.Printf("%s - %s <- %s\n", formatTicketPrefix(b.ticket), b.ticket.Title, blockersStr)
 	}
 
 	return nil

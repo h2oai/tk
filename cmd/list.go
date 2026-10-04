@@ -52,7 +52,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		if len(t.Deps) > 0 {
 			depStr = " <- [" + strings.Join(t.Deps, ", ") + "]"
 		}
-		fmt.Printf("%-8s [%s] - %s%s\n", t.ID, t.Status, t.Title, depStr)
+		fmt.Printf("%s - %s%s\n", formatTicketPrefix(t), t.Title, depStr)
 	}
 
 	return nil

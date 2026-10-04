@@ -438,7 +438,7 @@ func TestBlockedOutputFormat(t *testing.T) {
 
 		line := lines[0]
 
-		// Format: "%-8s [P%d][%s] - %s <- %s"
+		// Format: "%-8s [P%d][%s][%s] - %s <- %s"
 		// Should contain ID
 		if !strings.Contains(line, parent) {
 			t.Error("line should contain parent ID")
@@ -452,6 +452,11 @@ func TestBlockedOutputFormat(t *testing.T) {
 		// Should contain status
 		if !strings.Contains(line, "[open]") {
 			t.Errorf("line should contain [open], got: %s", line)
+		}
+
+		// Should contain type (default is task)
+		if !strings.Contains(line, "[task]") {
+			t.Errorf("line should contain [task], got: %s", line)
 		}
 
 		// Should contain title

@@ -83,7 +83,7 @@ func runReady(cmd *cobra.Command, args []string) error {
 
 	// Print
 	for _, t := range ready {
-		fmt.Printf("%-8s [P%d][%s] - %s\n", t.ID, t.Priority, t.Status, t.Title)
+		fmt.Printf("%s - %s\n", formatTicketPrefix(t), t.Title)
 	}
 
 	return nil
