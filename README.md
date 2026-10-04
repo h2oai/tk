@@ -64,6 +64,8 @@ tk ls --status in_progress
 tk close <id>
 ```
 
+`tk ready --tree` and `--watch` group ready tickets under their parent epic, coloured by priority and type (bug red, feature green, epic magenta); colour is off when piped or `NO_COLOR` is set.
+
 Everything else — `link`, `clean`, `prune`, `query`, `edit` — lives under [All Commands](#all-commands).
 
 ## Key Features
