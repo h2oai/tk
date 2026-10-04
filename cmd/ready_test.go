@@ -782,6 +782,28 @@ func TestReadyTreeContextParent(t *testing.T) {
 	}
 }
 
+func TestReadyTreeInProgressMarker(t *testing.T) {
+	ctx, cleanup := setupTestCmd(t)
+	defer cleanup()
+
+	active, _ := ctx.exec("new", "Active", "-t", "task")
+	active = strings.TrimSpace(active)
+	ctx.exec("start", active)
+	idle, _ := ctx.exec("new", "Idle", "-t", "task")
+	idle = strings.TrimSpace(idle)
+
+	output, err := ctx.exec("ready", "--tree")
+	if err != nil {
+		t.Fatalf("ready --tree error: %v", err)
+	}
+	if !strings.Contains(output, "▶ "+active) {
+		t.Errorf("in-progress ticket %s should be prefixed with ▶:\n%s", active, output)
+	}
+	if strings.Contains(output, "▶ "+idle) {
+		t.Errorf("open ticket %s should not be prefixed with ▶:\n%s", idle, output)
+	}
+}
+
 func TestReadyTreeEmptyAndInterval(t *testing.T) {
 	ctx, cleanup := setupTestCmd(t)
 	defer cleanup()

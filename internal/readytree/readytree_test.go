@@ -8,6 +8,27 @@ import (
 	"github.com/h2oai/tk/internal/ticket"
 )
 
+func TestRenderInProgressMarker(t *testing.T) {
+	open := &ticket.Ticket{ID: "a1", Priority: 1, Type: ticket.TypeTask, Title: "Open", Status: ticket.StatusOpen}
+	active := &ticket.Ticket{ID: "b2", Priority: 2, Type: ticket.TypeTask, Title: "Active", Status: ticket.StatusInProgress}
+	all := []*ticket.Ticket{open, active}
+
+	for _, color := range []bool{false, true} {
+		var buf bytes.Buffer
+		if err := Render(&buf, all, all, "priority", color); err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(buf.String(), "\n") {
+			if strings.Contains(line, "Open") && strings.Contains(line, "▶") {
+				t.Errorf("open ticket should not get the in-progress marker (color=%v): %q", color, line)
+			}
+			if strings.Contains(line, "Active") && !strings.Contains(line, "▶") {
+				t.Errorf("in-progress ticket should be marked with ▶ (color=%v): %q", color, line)
+			}
+		}
+	}
+}
+
 func TestRenderColor(t *testing.T) {
 	bug := &ticket.Ticket{ID: "a1", Priority: 1, Type: ticket.TypeBug, Title: "Boom", Status: ticket.StatusOpen}
 	task := &ticket.Ticket{ID: "b2", Priority: 2, Type: ticket.TypeTask, Title: "Plain", Status: ticket.StatusOpen}

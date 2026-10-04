@@ -25,9 +25,11 @@ ready tickets whose parent is that ticket, which is useful for finding the
 next available work inside an epic.
 
 With --tree, ready tickets are drawn as a tree following parent links, with
-non-ready ancestors shown as dim context lines. With --watch (implies --tree),
-the tree is redrawn every --interval seconds until interrupted. When stdout is
-not a terminal, --watch prints the tree once and exits.`,
+non-ready ancestors shown as dim context lines. Ready tickets already in
+progress are prefixed with a "▶" marker so active work is easy to spot. With
+--watch (implies --tree), the tree is redrawn every --interval seconds until
+interrupted. When stdout is not a terminal, --watch prints the tree once and
+exits.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runReady,
 }

@@ -15,12 +15,15 @@ const (
 	ansiYellow  = "\x1b[33m"
 	ansiGreen   = "\x1b[32m"
 	ansiMagenta = "\x1b[35m"
+	ansiCyan    = "\x1b[36m"
 )
 
 // Render writes ready tickets as a tree of parent links. Ancestors of ready
 // tickets that are not themselves ready appear as context nodes marked with
-// their status. Siblings are ordered by sortField. With color set, lines are
-// coloured by priority and context nodes are dimmed.
+// their status. Ready tickets that are already in progress are prefixed with a
+// "▶" marker so active work stands out from merely available work. Siblings are
+// ordered by sortField. With color set, lines are coloured by priority and
+// context nodes are dimmed.
 func Render(w io.Writer, all, ready []*ticket.Ticket, sortField string, color bool) error {
 	byID := make(map[string]*ticket.Ticket, len(all))
 	for _, t := range all {
@@ -89,17 +92,27 @@ func Render(w io.Writer, all, ready []*ticket.Ticket, sortField string, color bo
 }
 
 func line(t *ticket.Ticket, ready, color bool) string {
+	inProgress := ready && t.Status == ticket.StatusInProgress
+
 	suffix := ""
 	if !ready {
 		suffix = fmt.Sprintf(" (%s)", t.Status)
 	}
 	if !color {
-		return fmt.Sprintf("%s P%d %s %s%s", t.ID, t.Priority, t.Type, t.Title, suffix)
+		marker := ""
+		if inProgress {
+			marker = "▶ "
+		}
+		return fmt.Sprintf("%s%s P%d %s %s%s", marker, t.ID, t.Priority, t.Type, t.Title, suffix)
 	}
 	if !ready {
 		return ansiDim + fmt.Sprintf("%s P%d %s %s%s", t.ID, t.Priority, t.Type, t.Title, suffix) + ansiReset
 	}
-	return fmt.Sprintf("%s %s %s %s", t.ID,
+	id := t.ID
+	if inProgress {
+		id = paint(ansiCyan, "▶") + " " + t.ID
+	}
+	return fmt.Sprintf("%s %s %s %s", id,
 		paint(priorityColor(t.Priority), fmt.Sprintf("P%d", t.Priority)),
 		paint(typeColor(t.Type), string(t.Type)),
 		t.Title)
