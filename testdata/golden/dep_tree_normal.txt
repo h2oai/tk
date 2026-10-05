@@ -1,4 +1,0 @@
-a-1234 [open] Root ticket
-├── b-5678 [open] Child B
-│   └── d-9012 [open] Leaf D
-└── c-3456 [open] Child C

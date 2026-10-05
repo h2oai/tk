@@ -1,0 +1,111 @@
+# tk v2 specification
+
+A minimal ticket tracker built around one idea: **tickets form an ordered tree, and `tk ready` returns the highest leaf.** All the user does is create a hierarchy and reorder it.
+
+This replaces the current codebase (including `chain`, `readytree`, `deptree`, priority, type, links, gojq `query`). Old code and the 11 existing tickets are dropped; the rewrite happens in place in this repo.
+
+## Concepts
+
+- **Ticket**: a unit of work with a title, body, status and optional blockers.
+- **Tree**: every ticket has at most one parent. Tickets with no parent are *roots*. Roots are ordered, and each ticket's children are ordered.
+- **Epic**: not a type. A ticket is an epic if and only if it has children. Any ticket can have children, at any depth.
+- **Order**: siblings are ordered by their position in the parent's `children` list (roots by `ROOT.md`). Earlier means picked up first. The global order is DFS preorder over roots.
+- **Leaf**: a ticket with no children.
+
+There is no priority, type, assignee, links or external-ref. Order and hierarchy replace them.
+
+## On-disk layout
+
+```
+.tickets/
+  ROOT.md        # ordered root ids
+  <id>.md        # one file per ticket
+```
+
+`<id>.md`:
+
+```markdown
+---
+id: fanir7
+status: open            # open | in_progress | closed
+blocked-by: [lovet2]
+children: [kamop3, ritus9]   # ordered; first is picked up first
+created: 2026-10-05T12:00:00Z
+---
+# Title
+
+Body text, notes appended as timestamped sections.
+```
+
+- The hierarchy is stored **only** in `children` lists and `ROOT.md`. A child does not store its parent; the parent is derived by scanning.
+- IDs keep the current scheme (pronounceable CVCVC plus trailing digit, crypto/rand) and partial matching (exact match first, then substring; error on zero or multiple matches).
+- Writes are atomic (temp file then rename). `mv` edits up to three files (old parent, new parent, and the moved ticket is untouched).
+- `tk` directory defaults to `.tickets`, override with `--dir`.
+
+## Status rules
+
+- Statuses: `open`, `in_progress`, `closed`.
+- **Leaves** hold real status.
+- **Non-leaves** may be closed manually, but `close` fails while any descendant is not closed (`--force` cascades closing to all descendants).
+- Adding a child under a ticket that is `closed` or `in_progress` resets that parent to `open` (it is now an epic and waits for its children).
+- A parent whose children are all closed becomes a ready leaf again (a wrap-up task) until closed by hand. Childless placeholder containers surface in `ready` too; this is accepted. Reorder to the bottom or add children first.
+
+## `tk ready`
+
+Definition of "highest leaf":
+
+1. If any leaf is `in_progress`, take the first one in DFS order (resume work).
+2. Otherwise take the first leaf in DFS order whose status is not `closed`. A non-leaf whose descendants are all closed counts as a leaf for this purpose, since it is the next actionable item.
+
+`tk ready <epic>` scopes the search to that ticket's subtree.
+
+Blocking: a ticket is blocked if it, or any ancestor, has an unclosed ticket in `blocked-by`. If the selected top leaf is blocked, `ready` **stops** (it does not skip to the next leaf) and prints the blocker and its position, for example:
+
+```
+blocked: fanir7 "Add parser" waits on lovet2 "Pick schema" (2.4.1, open)
+```
+
+Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf is blocked.
+
+## Dependencies (`blocked-by`)
+
+- `blocked-by` is a list of ticket ids, on any ticket. A blocker is satisfied only when it is `closed`. Epics may be blockers (satisfied once closed manually).
+- Dependencies **may disagree with order**. That is the situation `ready` exit code 2 reports.
+- Rejected by `tk dep` and re-checked by `tk mv`:
+  - cycles, counting both `blocked-by` edges and parent links
+  - a dep between a ticket and its own ancestor or descendant (it could never be satisfied)
+- Descendants inherit blocking from ancestors.
+
+## Commands
+
+| Command | Behaviour |
+|---|---|
+| `tk new "Title" [--under P] [--at N] [-b body \| -b - \| -F file]` | Create a ticket. Default: append as last child of `P`, or last root. |
+| `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Closed subtrees hidden unless `--all`. Positions are display only. |
+| `tk show <id>` | Title, body, status, blockers, children, position. |
+| `tk edit <id>` | Open in `$EDITOR`. |
+| `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
+| `tk start <id>` / `tk close <id>` / `tk reopen <id>` | Status transitions, with the rules above. |
+| `tk ready [<epic>]` | See above. |
+| `tk mv <id> --under P --at N` (also `--before/--after <id>`) | Reparent and/or reposition. |
+| `tk up/down/top/bottom <id>` | Move within siblings. |
+| `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage `blocked-by`. |
+| `tk rm <id>` | Refuses if the ticket has children or is anyone's blocker. `--force` deletes the subtree and detaches deps. |
+| `tk fsck` | Verify integrity: orphans, ticket in two parents, dangling ids, cycles, dep rule violations. |
+
+Addressing is by id only (partial matching). Positional paths are never accepted as arguments, because they shift on reorder.
+
+Free-form text input contract: inline, stdin with `-`, or file with `-F`.
+
+## Non-goals
+
+- Multiple concurrent workers or claims: single worker assumed. Use `tk ready <epic>` to scope parallel streams by hand.
+- Priority, type, assignee, links, jq `query`, live `--watch` tree, `prune`, `clean`, archive.
+- Positional addressing and a single outline file.
+
+## Implementation notes
+
+- Language and libraries: Go, `spf13/cobra`, `gopkg.in/yaml.v3`. Drop `itchyny/gojq`.
+- Delete `cmd/` and `internal/` wholesale and rebuild; update `README.md`, `CLAUDE.md` and `AGENT_INSTRUCTIONS.md` to match.
+- Packages (suggested): `internal/store` (load/save, ID resolution, atomic writes), `internal/tree` (DFS, ready, dep validation, mv), `cmd/` (thin cobra commands).
+- Work is currently on branch `simplify` - make all commits to this branch.

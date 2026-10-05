@@ -3,27 +3,22 @@ package cmd
 import (
 	"os"
 
-	"github.com/h2oai/tk/internal/ticket"
 	"github.com/spf13/cobra"
 )
 
-var (
-	ticketsDir string
-	store      *ticket.FileStore
-)
+// DefaultDir is the tickets directory used when --dir is not given.
+const DefaultDir = ".tickets"
+
+var ticketsDir string
 
 var rootCmd = &cobra.Command{
-	Use:   "tk",
-	Short: "Minimal ticket system with dependency tracking",
-	Long: `tk - minimal ticket system with dependency tracking
-
-Tickets are stored as markdown files with YAML frontmatter in .tickets/
-Supports partial ID matching (e.g., 'tk show fan' matches 'fanir7')`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		store = ticket.NewFileStore(ticketsDir)
-	},
+	Use:           "tk",
+	Short:         "Minimal ordered-tree ticket tracker",
+	SilenceUsage:  true,
+	SilenceErrors: false,
 }
 
+// Execute runs the root command.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -31,5 +26,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&ticketsDir, "dir", ticket.DefaultTicketsDir, "tickets directory")
+	rootCmd.PersistentFlags().StringVar(&ticketsDir, "dir", DefaultDir, "tickets directory")
 }
