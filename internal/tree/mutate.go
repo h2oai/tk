@@ -143,7 +143,7 @@ func (t *Tree) Move(id, parent string, p Place) error {
 		t.reindex()
 		for _, pr := range t.depProblems() {
 			if !before[pr.key()] {
-				return fmt.Errorf("move %s: %s", id, pr.Msg)
+				return fmt.Errorf("move %s: %s: %w", id, pr.Msg, pr.Err)
 			}
 		}
 		return nil

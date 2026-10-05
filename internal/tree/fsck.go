@@ -25,6 +25,7 @@ type Problem struct {
 	Kind string
 	ID   string // ticket concerned ("ROOT" for ROOT.md)
 	Msg  string
+	Err  error // sentinel for dep rule violations, else nil
 }
 
 func (p Problem) String() string { return fmt.Sprintf("%s: %s: %s", p.Kind, p.ID, p.Msg) }
@@ -45,19 +46,19 @@ func (t *Tree) Fsck() []Problem {
 	ids := t.sortedIDs()
 	for _, id := range t.roots {
 		if t.tickets[id] == nil {
-			out = append(out, Problem{KindDangling, "ROOT", "lists missing ticket " + id})
+			out = append(out, Problem{KindDangling, "ROOT", "lists missing ticket " + id, nil})
 		}
 	}
 	for _, id := range ids {
 		tk := t.tickets[id]
 		for _, c := range tk.Children {
 			if t.tickets[c] == nil {
-				out = append(out, Problem{KindDangling, id, "children lists missing ticket " + c})
+				out = append(out, Problem{KindDangling, id, "children lists missing ticket " + c, nil})
 			}
 		}
 		for _, b := range tk.BlockedBy {
 			if t.tickets[b] == nil {
-				out = append(out, Problem{KindDangling, id, "blocked-by lists missing ticket " + b})
+				out = append(out, Problem{KindDangling, id, "blocked-by lists missing ticket " + b, nil})
 			}
 		}
 	}
@@ -67,18 +68,18 @@ func (t *Tree) Fsck() []Problem {
 			for i, p := range o {
 				names[i] = cmpName(p)
 			}
-			out = append(out, Problem{KindDuplicate, id, fmt.Sprintf("listed %d times (%s)", len(o), strings.Join(names, ", "))})
+			out = append(out, Problem{KindDuplicate, id, fmt.Sprintf("listed %d times (%s)", len(o), strings.Join(names, ", ")), nil})
 		}
 	}
 	for _, id := range ids {
 		if _, ok := t.pos[id]; !ok {
-			out = append(out, Problem{KindOrphan, id, "not reachable from ROOT"})
+			out = append(out, Problem{KindOrphan, id, "not reachable from ROOT", nil})
 		}
 	}
 	out = append(out, t.depProblems()...)
 	for _, id := range ids {
 		if st := t.tickets[id].Status; (st == store.StatusClosed || st == store.StatusInProgress) && t.hasUnclosed(t.Descendants(id)) {
-			out = append(out, Problem{KindStatus, id, string(st) + " but has descendants that are not closed"})
+			out = append(out, Problem{KindStatus, id, string(st) + " but has descendants that are not closed", nil})
 		}
 	}
 	return out
@@ -101,11 +102,11 @@ func (t *Tree) depProblems() []Problem {
 			switch {
 			case t.tickets[b] == nil:
 			case b == id:
-				out = append(out, Problem{KindDep, id, "depends on itself"})
+				out = append(out, Problem{KindDep, id, "depends on itself", ErrSelfDep})
 			case t.isAncestor(b, id):
-				out = append(out, Problem{KindDep, id, "depends on its ancestor " + b})
+				out = append(out, Problem{KindDep, id, "depends on its ancestor " + b, ErrRelatedDep})
 			case t.isAncestor(id, b):
-				out = append(out, Problem{KindDep, id, "depends on its descendant " + b})
+				out = append(out, Problem{KindDep, id, "depends on its descendant " + b, ErrRelatedDep})
 			}
 		}
 	}
@@ -134,7 +135,7 @@ func (t *Tree) cycles(ids []string) []Problem {
 				sort.Strings(key)
 				if k := strings.Join(key, ","); !seen[k] {
 					seen[k] = true
-					out = append(out, Problem{KindCycle, cyc[0], "cycle: " + strings.Join(append(cyc, m), " -> ")})
+					out = append(out, Problem{KindCycle, cyc[0], "cycle: " + strings.Join(append(cyc, m), " -> "), ErrDepCycle})
 				}
 			}
 		}

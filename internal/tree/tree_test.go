@@ -431,13 +431,13 @@ func TestMoveRechecksDeps(t *testing.T) {
 		outline string
 		deps    [][2]string
 		id, to  string
-		wantErr bool
+		wantErr error
 	}{
-		{"into blocker's subtree", "a\nb\nc", [][2]string{{"a", "b"}}, "a", "b", true},
-		{"blocker into dependant's subtree", "a\nb", [][2]string{{"a", "b"}}, "b", "a", true},
-		{"unrelated ok", "a\nb\nc", [][2]string{{"a", "b"}}, "a", "c", false},
-		{"ancestor would wait on descendant", "p\n  x\ny", [][2]string{{"p", "y"}}, "y", "x", true},
-		{"inherited blocker cycle", "q\nb\nx", [][2]string{{"q", "b"}, {"b", "x"}}, "x", "q", true},
+		{"into blocker's subtree", "a\nb\nc", [][2]string{{"a", "b"}}, "a", "b", ErrRelatedDep},
+		{"blocker into dependant's subtree", "a\nb", [][2]string{{"a", "b"}}, "b", "a", ErrRelatedDep},
+		{"unrelated ok", "a\nb\nc", [][2]string{{"a", "b"}}, "a", "c", nil},
+		{"ancestor would wait on descendant", "p\n  x\ny", [][2]string{{"p", "y"}}, "y", "x", ErrRelatedDep},
+		{"inherited blocker cycle", "q\nb\nx", [][2]string{{"q", "b"}, {"b", "x"}}, "x", "q", ErrDepCycle},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -449,10 +449,10 @@ func TestMoveRechecksDeps(t *testing.T) {
 			}
 			before := outline(tr)
 			err := tr.Move(tt.id, tt.to, Place{})
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			if !errors.Is(err, tt.wantErr) && (err != nil || tt.wantErr != nil) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
-			if tt.wantErr && (outline(tr) != before || outline(reloaded(t, st)) != before) {
+			if tt.wantErr != nil && (outline(tr) != before || outline(reloaded(t, st)) != before) {
 				t.Error("rejected move left changes behind")
 			}
 		})
