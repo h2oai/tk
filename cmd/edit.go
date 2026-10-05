@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/h2oai/tk/internal/store"
 	"github.com/spf13/cobra"
@@ -23,12 +22,12 @@ func newEditCmd(app *App) *cobra.Command {
 			if editor == "" {
 				return fmt.Errorf("$EDITOR is not set")
 			}
-			st := app.Store()
-			id, err := st.ResolveID(args[0])
+			t, ids, err := app.LoadResolved(args[0])
 			if err != nil {
 				return err
 			}
-			path := filepath.Join(st.Dir, id+".md")
+			id := ids[0]
+			path := filepath.Join(app.Dir, id+".md")
 			orig, err := os.ReadFile(path)
 			if err != nil {
 				return err
@@ -56,11 +55,7 @@ func newEditCmd(app *App) *cobra.Command {
 			}
 			// Validate before touching the real file, so a bad edit is rejected.
 			// Deleting the created line keeps the ticket's existing timestamp.
-			var created time.Time
-			if cur, err := st.Load(id); err == nil {
-				created = cur.Created
-			}
-			tk, err := store.UnmarshalAt(data, created)
+			tk, err := store.UnmarshalAt(data, t.Get(id).Created)
 			if err != nil {
 				return fmt.Errorf("edited ticket is invalid, nothing saved: %w", err)
 			}
@@ -70,7 +65,7 @@ func newEditCmd(app *App) *cobra.Command {
 			if err := tk.Validate(); err != nil {
 				return fmt.Errorf("edited ticket is invalid, nothing saved: %w", err)
 			}
-			if err := st.Save(tk); err != nil {
+			if err := t.Replace(tk); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "edited %s\n", id)

@@ -62,3 +62,20 @@ func marker(s store.Status) string {
 	}
 	return "[ ]"
 }
+
+// placeFromFlags builds a Place from --at/--before/--after, resolving anchors.
+func placeFromFlags(t *tree.Tree, at int, before, after string) (tree.Place, error) {
+	place := tree.Place{Index: at}
+	var err error
+	if before != "" {
+		if place.Before, err = t.Resolve(before); err != nil {
+			return place, err
+		}
+	}
+	if after != "" {
+		if place.After, err = t.Resolve(after); err != nil {
+			return place, err
+		}
+	}
+	return place, nil
+}

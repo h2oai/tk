@@ -30,22 +30,12 @@ func newNoteCmd(app *App) *cobra.Command {
 			if strings.TrimSpace(text) == "" {
 				return errors.New("note text is empty")
 			}
-			st := app.Store()
-			id, err := st.ResolveID(args[0])
+			t, ids, err := app.LoadResolved(args[0])
 			if err != nil {
 				return err
 			}
-			tk, err := st.Load(id)
-			if err != nil {
-				return err
-			}
-			stamp := time.Now().UTC().Format(time.RFC3339)
-			tk.Body = strings.TrimRight(tk.Body, "\n")
-			if tk.Body != "" {
-				tk.Body += "\n\n"
-			}
-			tk.Body += fmt.Sprintf("## Note %s\n\n%s", stamp, text)
-			if err := st.Save(tk); err != nil {
+			id := ids[0]
+			if err := t.AppendNote(id, text, time.Now()); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "noted %s\n", id)

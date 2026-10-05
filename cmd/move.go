@@ -23,7 +23,6 @@ func init() {
 	}
 }
 
-// moveErr turns tree sentinel errors into messages aimed at the user.
 func printPlace(cmd *cobra.Command, t *tree.Tree, id string) {
 	fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s\n", id, t.Position(id), t.Get(id).Title)
 }
@@ -54,16 +53,9 @@ without any position the ticket is appended last.`,
 				return err
 			}
 			id := ids[0]
-			place := tree.Place{Index: at}
-			if before != "" {
-				if place.Before, err = t.Resolve(before); err != nil {
-					return err
-				}
-			}
-			if after != "" {
-				if place.After, err = t.Resolve(after); err != nil {
-					return err
-				}
+			place, err := placeFromFlags(t, at, before, after)
+			if err != nil {
+				return err
 			}
 			var parent string
 			switch {

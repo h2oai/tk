@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/h2oai/tk/internal/store"
 )
@@ -237,4 +238,33 @@ func (t *Tree) isRoot(id string) bool { return slices.Contains(t.roots, id) }
 
 func (t *Tree) isListed(parent, id string) bool {
 	return (parent == "" || t.tickets[parent] != nil) && slices.Contains(t.siblings(parent), id)
+}
+
+// Replace overwrites the stored ticket with tk (same id) after an edit.
+func (t *Tree) Replace(tk *store.Ticket) error {
+	if _, err := t.mustExist(tk.ID); err != nil {
+		return err
+	}
+	return t.apply(func() error {
+		t.tickets[tk.ID] = tk
+		t.touch(tk.ID)
+		return nil
+	})
+}
+
+// AppendNote appends a timestamped note section to the ticket's body.
+func (t *Tree) AppendNote(id, text string, at time.Time) error {
+	tk, err := t.mustExist(id)
+	if err != nil {
+		return err
+	}
+	return t.apply(func() error {
+		tk.Body = strings.TrimRight(tk.Body, "\n")
+		if tk.Body != "" {
+			tk.Body += "\n\n"
+		}
+		tk.Body += fmt.Sprintf("## Note %s\n\n%s", at.UTC().Format(time.RFC3339), text)
+		t.touch(id)
+		return nil
+	})
 }

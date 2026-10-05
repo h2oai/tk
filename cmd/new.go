@@ -42,16 +42,9 @@ func newNewCmd(app *App) *cobra.Command {
 					return err
 				}
 			}
-			place := tree.Place{Index: at}
-			if before != "" {
-				if place.Before, err = t.Resolve(before); err != nil {
-					return err
-				}
-			}
-			if after != "" {
-				if place.After, err = t.Resolve(after); err != nil {
-					return err
-				}
+			place, err := placeFromFlags(t, at, before, after)
+			if err != nil {
+				return err
 			}
 			id := store.GenerateID()
 			for t.Get(id) != nil {
