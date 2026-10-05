@@ -3,9 +3,18 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
+)
+
+// Exit codes. 0, 1 and 2 keep their meaning for `ready` (found, nothing left,
+// blocked); `fsck` also uses 1 for "problems found". Every other failure
+// (bad id, missing directory, corrupt tickets, usage errors) exits ExitGeneric.
+const (
+	ExitFsck    = 1
+	ExitGeneric = 3
 )
 
 // DefaultDir is the tickets directory used when --dir is not given.
@@ -48,7 +57,7 @@ func Execute() {
 }
 
 // report prints err to w (unless it is a silent exit) and returns the exit code.
-func report(w interface{ Write([]byte) (int, error) }, err error) int {
+func report(w io.Writer, err error) int {
 	var ee *ExitError
 	if errors.As(err, &ee) {
 		if ee.Msg != "" {
@@ -57,5 +66,5 @@ func report(w interface{ Write([]byte) (int, error) }, err error) int {
 		return ee.Code
 	}
 	fmt.Fprintln(w, "Error:", err)
-	return 1
+	return ExitGeneric
 }

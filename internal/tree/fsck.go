@@ -77,8 +77,8 @@ func (t *Tree) Fsck() []Problem {
 	}
 	out = append(out, t.depProblems()...)
 	for _, id := range ids {
-		if t.tickets[id].Status == store.StatusClosed && t.hasUnclosed(t.Descendants(id)) {
-			out = append(out, Problem{KindStatus, id, "closed but has descendants that are not closed"})
+		if st := t.tickets[id].Status; (st == store.StatusClosed || st == store.StatusInProgress) && t.hasUnclosed(t.Descendants(id)) {
+			out = append(out, Problem{KindStatus, id, string(st) + " but has descendants that are not closed"})
 		}
 	}
 	return out

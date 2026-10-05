@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -86,7 +87,11 @@ func Unmarshal(data []byte) (*Ticket, error) {
 		content = rest[i+1+len(fence):]
 	}
 	var fm frontmatter
-	if err := yaml.Unmarshal([]byte(fmText), &fm); err != nil {
+	// Unknown keys are rejected, not dropped: a typo such as "blockd-by" or a
+	// v1 field would otherwise vanish on the next save.
+	dec := yaml.NewDecoder(strings.NewReader(fmText))
+	dec.KnownFields(true)
+	if err := dec.Decode(&fm); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parse frontmatter: %w", err)
 	}
 	line, body, _ := strings.Cut(content, "\n")

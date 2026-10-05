@@ -110,7 +110,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	// Closing the epic fails while C is open; --force cascades.
-	wantExit(1, "close", epic)
+	wantExit(3, "close", epic)
 	run("close", "--force", epic)
 	if got := readyID(); got != other {
 		t.Fatalf("ready = %s, want %s (Other)", got, other)
@@ -120,7 +120,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	// rm refuses a ticket with children, --force removes the subtree.
-	wantExit(1, "rm", epic)
+	wantExit(3, "rm", epic)
 	run("rm", "--force", epic)
 	if _, err := os.Stat(filepath.Join(dir, ".tickets", epic+".md")); !os.IsNotExist(err) {
 		t.Fatalf("epic file should be gone: %v", err)

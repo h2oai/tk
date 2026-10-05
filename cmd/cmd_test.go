@@ -109,7 +109,7 @@ func TestNewLsShow(t *testing.T) {
 	contains(t, show, c)
 
 	_, errs, code := e.fail("new", "x", "--under", "nope")
-	if code != 1 || !strings.Contains(errs, "not found") {
+	if code != ExitGeneric || !strings.Contains(errs, "not found") {
 		t.Errorf("code %d errs %q", code, errs)
 	}
 }
@@ -127,7 +127,7 @@ func TestNewBodyInput(t *testing.T) {
 	id := e.newT("F", "-F", path)
 	contains(t, e.run("show", id), "from file")
 
-	if _, _, code := e.fail("new", "X", "-b", "a", "-F", path); code != 1 {
+	if _, _, code := e.fail("new", "X", "-b", "a", "-F", path); code != ExitGeneric {
 		t.Errorf("code %d", code)
 	}
 }
@@ -172,7 +172,7 @@ func TestNote(t *testing.T) {
 	if strings.Count(show, "## Note ") != 3 {
 		t.Errorf("want 3 notes:\n%s", show)
 	}
-	if _, _, code := e.fail("note", a); code != 1 {
+	if _, _, code := e.fail("note", a); code != ExitGeneric {
 		t.Errorf("empty note should fail")
 	}
 }
@@ -184,7 +184,7 @@ func TestStatusCommands(t *testing.T) {
 
 	contains(t, e.run("start", c), c+" in_progress")
 	_, errs, code := e.fail("close", p)
-	if code != 1 || !strings.Contains(errs, "not closed") {
+	if code != ExitGeneric || !strings.Contains(errs, "not closed") {
 		t.Errorf("close parent: %d %q", code, errs)
 	}
 	contains(t, e.run("close", p, "--force"), c+" closed")
@@ -202,7 +202,7 @@ func TestReadyExitCodes(t *testing.T) {
 	// No tickets at all: nothing left.
 	e.run("new", "tmp")
 	_, errs, code := e.fail("ready", "zzzz")
-	if code != 1 || !strings.Contains(errs, "not found") {
+	if code != ExitGeneric || !strings.Contains(errs, "not found") {
 		t.Errorf("unknown scope: %d %q", code, errs)
 	}
 
@@ -253,7 +253,7 @@ func TestEdit(t *testing.T) {
 	os.WriteFile(bad, []byte("#!/bin/sh\necho garbage > \"$1\"\n"), 0o755)
 	t.Setenv("EDITOR", bad)
 	_, errs, code := e.fail("edit", a)
-	if code != 1 || !strings.Contains(errs, "invalid") {
+	if code != ExitGeneric || !strings.Contains(errs, "invalid") {
 		t.Errorf("bad edit: %d %q", code, errs)
 	}
 	contains(t, e.run("show", a), "# Renamed") // untouched
@@ -265,7 +265,7 @@ func TestEdit(t *testing.T) {
 func TestMissingDir(t *testing.T) {
 	e := newEnv(t)
 	_, errs, code := e.fail("ls")
-	if code != 1 || !strings.Contains(errs, "no tickets directory") {
+	if code != ExitGeneric || !strings.Contains(errs, "no tickets directory") {
 		t.Errorf("%d %q", code, errs)
 	}
 }
@@ -274,5 +274,66 @@ func TestExitErrorType(t *testing.T) {
 	var ee *ExitError
 	if !errors.As(error(&ExitError{Code: 2}), &ee) || ee.Code != 2 {
 		t.Error("ExitError not matched")
+	}
+}
+
+func TestGenericErrorsAvoidReadyCodes(t *testing.T) {
+	e := newEnv(t)
+	e.run("new", "x")
+	for _, args := range [][]string{{"ready", "zzzz"}, {"show", "zzzz"}, {"bogus"}, {"ls", "--nope"}, {"show"}} {
+		_, _, code := e.fail(args...)
+		if code != ExitGeneric || code == 0 || code == 1 || code == 2 {
+			t.Errorf("tk %v: code %d", args, code)
+		}
+	}
+}
+
+func TestCorruptRootRefusesMutations(t *testing.T) {
+	e := newEnv(t)
+	a, b := e.newT("A"), e.newT("B")
+	rootPath := filepath.Join(e.dir, "ROOT.md")
+	if err := os.WriteFile(rootPath, []byte("garbage\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"new", "X"}, {"mv", a, "--root"}, {"rm", b}, {"close", a}, {"dep", a, b}} {
+		_, errs, code := e.fail(args...)
+		if code != ExitGeneric || !strings.Contains(errs, "refusing to modify") {
+			t.Errorf("tk %v: code %d errs %q", args, code, errs)
+		}
+	}
+	if got, _ := os.ReadFile(rootPath); string(got) != "garbage\n" {
+		t.Errorf("ROOT.md was modified: %q", got)
+	}
+	// Reads and fsck still work and report the problem.
+	e.run("ls")
+	out, _, code := e.fail("fsck")
+	if code != ExitFsck {
+		t.Errorf("fsck code %d", code)
+	}
+	contains(t, out, "unreadable: ROOT")
+}
+
+func TestUnknownFrontmatterKeyIsReported(t *testing.T) {
+	e := newEnv(t)
+	a := e.newT("A")
+	b := e.newT("B")
+	path := filepath.Join(e.dir, b+".md")
+	data, _ := os.ReadFile(path)
+	bad := strings.Replace(string(data), "status:", "blockd-by: ["+a+"]\nstatus:", 1)
+	if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, code := e.fail("fsck")
+	if code != ExitFsck {
+		t.Errorf("fsck code %d", code)
+	}
+	contains(t, out, "unreadable: "+b)
+	contains(t, out, "blockd-by")
+	_, errs, code := e.fail("new", "C")
+	if code != ExitGeneric || !strings.Contains(errs, "refusing to modify") {
+		t.Errorf("new: %d %q", code, errs)
+	}
+	if got, _ := os.ReadFile(path); string(got) != bad {
+		t.Error("file rewritten")
 	}
 }

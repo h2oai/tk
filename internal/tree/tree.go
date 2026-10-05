@@ -26,6 +26,7 @@ var (
 	ErrSelfDep         = errors.New("a ticket cannot depend on itself")
 	ErrRelatedDep      = errors.New("a ticket cannot depend on its own ancestor or descendant")
 	ErrDepCycle        = errors.New("dependency cycle")
+	ErrCorrupt         = errors.New("tickets are unreadable or corrupt")
 )
 
 // Tree is an in-memory view of a store: every ticket, the ordered roots and
@@ -263,8 +264,13 @@ func (t *Tree) touch(id string) {
 }
 
 // apply runs a mutation in memory, persists what it touched and rolls the
-// in-memory state back to the store's on any failure.
+// in-memory state back to the store's on any failure. It refuses to run at
+// all while any ticket or ROOT.md failed to load, so that an unreadable file
+// is never overwritten by a view that treats it as empty.
 func (t *Tree) apply(fn func() error) error {
+	if len(t.loadErr) > 0 {
+		return fmt.Errorf("%w (%s); refusing to modify, run `tk fsck`", ErrCorrupt, t.loadErr[0])
+	}
 	err := fn()
 	if err == nil {
 		err = t.commit()

@@ -34,7 +34,7 @@ func TestMv(t *testing.T) {
 		{"mv", a, "--before", b, "--after", c},
 		{"mv", a, "--before", "nope"},
 	} {
-		if _, _, code := e.fail(args...); code != 1 {
+		if _, _, code := e.fail(args...); code != ExitGeneric {
 			t.Errorf("%v: code %d", args, code)
 		}
 	}
@@ -47,7 +47,7 @@ func TestMvCycle(t *testing.T) {
 	c := e.newT("C", "--under", b)
 	for _, under := range []string{a, b, c} {
 		_, errs, code := e.fail("mv", a, "--under", under)
-		if code != 1 || !strings.Contains(errs, "its own ancestor") {
+		if code != ExitGeneric || !strings.Contains(errs, "its own ancestor") {
 			t.Errorf("under %s: code %d errs %q", under, code, errs)
 		}
 	}
@@ -60,7 +60,7 @@ func TestMvBadDepRule(t *testing.T) {
 	e.run("dep", b, a)
 	// moving B under A would make B depend on its own ancestor
 	_, errs, code := e.fail("mv", b, "--under", a)
-	if code != 1 || errs == "" {
+	if code != ExitGeneric || errs == "" {
 		t.Errorf("code %d errs %q", code, errs)
 	}
 	contains(t, e.run("ls"), "2 [ ] "+b)
@@ -78,7 +78,7 @@ func TestShift(t *testing.T) {
 	if got := lsIDs(e); strings.Join(got, ",") != strings.Join([]string{c, a, b}, ",") {
 		t.Errorf("order %v", got)
 	}
-	if _, _, code := e.fail("top", "nope"); code != 1 {
+	if _, _, code := e.fail("top", "nope"); code != ExitGeneric {
 		t.Error("expected failure")
 	}
 }
@@ -102,15 +102,37 @@ func TestDepUndep(t *testing.T) {
 		{[]string{"dep", a, "nope"}, "not found"},
 	} {
 		_, errs, code := e.fail(c.args...)
-		if code != 1 || !strings.Contains(errs, c.msg) {
+		if code != ExitGeneric || !strings.Contains(errs, c.msg) {
 			t.Errorf("%v: code %d errs %q", c.args, code, errs)
 		}
 	}
 	contains(t, e.run("undep", b, a), b+" no longer waits on "+a)
-	e.run("undep", b, a)
 	if strings.Contains(e.run("show", b), "blocked") {
 		t.Error("still blocked")
 	}
+}
+
+func TestUndepFailures(t *testing.T) {
+	e := newEnv(t)
+	a, b, c := e.newT("A"), e.newT("B"), e.newT("C")
+	e.run("dep", a, b)
+	for _, arg := range []string{"zzzz", "", c, "a"} { // typo, empty, non-blocker, ambiguous partial
+		_, errs, code := e.fail("undep", a, arg)
+		if code != ExitGeneric || errs == "" {
+			t.Errorf("undep %q: code %d errs %q", arg, code, errs)
+		}
+	}
+	_, errs, _ := e.fail("undep", a, c)
+	contains(t, errs, "is not blocked by")
+	contains(t, e.run("show", a), b) // untouched
+	// Already removed: second undep fails.
+	e.run("undep", a, b)
+	e.fail("undep", a, b)
+
+	// A dangling blocker can still be removed by its exact id.
+	e.block(a, "gone9")
+	contains(t, e.run("undep", a, "gone9"), a+" no longer waits on gone9")
+	e.fail("undep", a, "gone9")
 }
 
 func TestRm(t *testing.T) {
@@ -122,11 +144,11 @@ func TestRm(t *testing.T) {
 	e.run("dep", b, x)
 
 	_, errs, code := e.fail("rm", a)
-	if code != 1 || !strings.Contains(errs, "has children") {
+	if code != ExitGeneric || !strings.Contains(errs, "has children") {
 		t.Errorf("code %d errs %q", code, errs)
 	}
 	_, errs, code = e.fail("rm", x)
-	if code != 1 || !strings.Contains(errs, "blocks") || !strings.Contains(errs, b) {
+	if code != ExitGeneric || !strings.Contains(errs, "blocks") || !strings.Contains(errs, b) {
 		t.Errorf("code %d errs %q", code, errs)
 	}
 	if got := strings.Fields(e.run("rm", k)); len(got) != 1 || got[0] != k {
@@ -142,7 +164,7 @@ func TestRm(t *testing.T) {
 		t.Error("dep not detached")
 	}
 	contains(t, e.run("fsck"), "ok")
-	if _, _, code := e.fail("show", a); code != 1 {
+	if _, _, code := e.fail("show", a); code != ExitGeneric {
 		t.Error("removed ticket still shows")
 	}
 }
@@ -166,7 +188,7 @@ func TestFsck(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _, code := e.fail("fsck")
-	if code != 1 {
+	if code != ExitFsck {
 		t.Errorf("code %d", code)
 	}
 	contains(t, out, "dangling: "+a)

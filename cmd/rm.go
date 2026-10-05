@@ -52,7 +52,7 @@ func newFsckCmd(app *App) *cobra.Command {
 			for _, p := range problems {
 				fmt.Fprintln(w, p)
 			}
-			return &ExitError{Code: 1}
+			return &ExitError{Code: ExitFsck}
 		},
 	}
 }

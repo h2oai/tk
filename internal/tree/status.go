@@ -15,10 +15,11 @@ func (t *Tree) setStatus(id string, s store.Status, changed *[]string) {
 	}
 }
 
-// reopenAncestors puts closed ancestors back to open.
+// reopenAncestors puts closed and in_progress ancestors back to open: an
+// ancestor of unclosed work is an epic waiting for its children.
 func (t *Tree) reopenAncestors(id string, changed *[]string) {
 	for _, a := range t.Ancestors(id) {
-		if t.tickets[a].Status == store.StatusClosed {
+		if t.tickets[a].Status != store.StatusOpen {
 			t.setStatus(a, store.StatusOpen, changed)
 		}
 	}

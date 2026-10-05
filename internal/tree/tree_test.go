@@ -674,6 +674,8 @@ func TestFsck(t *testing.T) {
 		{"self dep", map[string]*tk{"a": {BlockedBy: []string{"a"}}}, []string{"a"}, []string{KindDep, KindCycle}},
 		{"ancestor dep", map[string]*tk{"a": {Children: []string{"b"}}, "b": {BlockedBy: []string{"a"}}}, []string{"a"}, []string{KindDep, KindCycle}},
 		{"descendant dep", map[string]*tk{"a": {Children: []string{"b"}, BlockedBy: []string{"b"}}, "b": {}}, []string{"a"}, []string{KindDep, KindCycle}},
+		{"in_progress with open child", map[string]*tk{"a": {Status: store.StatusInProgress, Children: []string{"b"}}, "b": {}}, []string{"a"}, []string{KindStatus}},
+		{"in_progress wrap-up parent", map[string]*tk{"a": {Status: store.StatusInProgress, Children: []string{"b"}}, "b": {Status: store.StatusClosed}}, []string{"a"}, nil},
 		{"closed with open child", map[string]*tk{"a": {Status: store.StatusClosed, Children: []string{"b"}}, "b": {}}, []string{"a"}, []string{KindStatus}},
 	}
 	for _, tt := range tests {
@@ -711,3 +713,108 @@ func TestFsck(t *testing.T) {
 }
 
 func writeFile(path, s string) error { return os.WriteFile(path, []byte(s), 0o644) }
+
+func TestCorruptRootRefusesMutations(t *testing.T) {
+	tr, st := build(t, "a\nb\nc")
+	if err := writeFile(st.Dir+"/ROOT.md", "garbage"); err != nil {
+		t.Fatal(err)
+	}
+	tr = reloaded(t, st)
+	extra := &store.Ticket{ID: "x", Status: store.StatusOpen, Created: time.Now().UTC(), Title: "x"}
+	ops := map[string]func() error{
+		"add":    func() error { return tr.Add(extra, "", Place{}) },
+		"move":   func() error { return tr.Move("a", "b", Place{}) },
+		"remove": func() error { _, err := tr.Remove("a", false); return err },
+		"start":  func() error { _, err := tr.Start("a"); return err },
+		"dep":    func() error { return tr.AddDep("a", "b") },
+	}
+	for name, op := range ops {
+		if err := op(); !errors.Is(err, ErrCorrupt) {
+			t.Errorf("%s: err = %v, want ErrCorrupt", name, err)
+		}
+	}
+	if got, _ := os.ReadFile(st.Dir + "/ROOT.md"); string(got) != "garbage" {
+		t.Errorf("ROOT.md modified: %q", got)
+	}
+	if _, err := os.Stat(st.Dir + "/x.md"); !os.IsNotExist(err) {
+		t.Error("new ticket file written")
+	}
+	if ps := tr.Fsck(); len(ps) == 0 || ps[0].Kind != KindUnreadable || ps[0].ID != "ROOT" {
+		t.Errorf("fsck = %v", ps)
+	}
+}
+
+func TestUnreadableTicketRefusesMutations(t *testing.T) {
+	tr, st := build(t, "a\nb")
+	if err := writeFile(st.Dir+"/b.md", "garbage"); err != nil {
+		t.Fatal(err)
+	}
+	tr = reloaded(t, st)
+	if _, err := tr.Close("a", false); !errors.Is(err, ErrCorrupt) {
+		t.Errorf("err = %v", err)
+	}
+	if got, _ := os.ReadFile(st.Dir + "/b.md"); string(got) != "garbage" {
+		t.Error("b.md modified")
+	}
+}
+
+func TestInProgressAncestorResetByOpenWork(t *testing.T) {
+	status := func(tr *Tree, id string) store.Status { return tr.Get(id).Status }
+	// The review's sequence: close C; start A; reopen C.
+	tr, st := build(t, "a\n  c")
+	if _, err := tr.Close("c", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.Start("a"); err != nil { // wrap-up parent
+		t.Fatal(err)
+	}
+	if status(tr, "a") != store.StatusInProgress {
+		t.Fatal("a should be in_progress")
+	}
+	changed, err := tr.Reopen("c")
+	if err != nil || !reflect.DeepEqual(changed, []string{"c", "a"}) {
+		t.Fatalf("changed = %v, err = %v", changed, err)
+	}
+	if got := status(reloaded(t, st), "a"); got != store.StatusOpen {
+		t.Errorf("a = %s, want open", got)
+	}
+	if ps := tr.Fsck(); len(ps) != 0 {
+		t.Errorf("fsck = %v", ps)
+	}
+
+	// Start of a descendant under an in_progress wrap-up parent.
+	tr, _ = build(t, "a:in_progress\n  b:closed\n  c:closed")
+	if _, err := tr.Start("b"); err != nil {
+		t.Fatal(err)
+	}
+	if status(tr, "a") != store.StatusOpen {
+		t.Errorf("a = %s after start b", status(tr, "a"))
+	}
+
+	// Add under a grandparent that is in_progress.
+	tr, _ = build(t, "g\n  p:closed")
+	_, _ = tr.Start("g")
+	if status(tr, "g") != store.StatusInProgress {
+		t.Fatal("g should be in_progress")
+	}
+	tk := &store.Ticket{ID: "n", Status: store.StatusOpen, Created: time.Now().UTC(), Title: "n"}
+	if err := tr.Add(tk, "p", Place{}); err != nil {
+		t.Fatal(err)
+	}
+	if status(tr, "g") != store.StatusOpen || status(tr, "p") != store.StatusOpen {
+		t.Errorf("g = %s, p = %s", status(tr, "g"), status(tr, "p"))
+	}
+
+	// Move open work under an in_progress wrap-up grandparent.
+	tr, _ = build(t, "g\n  p:closed\nx")
+	_, _ = tr.Start("g")
+	if err := tr.Move("x", "p", Place{}); err != nil {
+		t.Fatal(err)
+	}
+	if status(tr, "g") != store.StatusOpen {
+		t.Errorf("g = %s after move", status(tr, "g"))
+	}
+	if ps := tr.Fsck(); len(ps) != 0 {
+		t.Errorf("fsck = %v", ps)
+	}
+}

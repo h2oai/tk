@@ -69,6 +69,8 @@ func TestUnmarshalErrors(t *testing.T) {
 		{"bad status", "---\nid: a1\nstatus: nope\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
 		{"no title", "---\nid: a1\nstatus: open\ncreated: 2026-10-05T12:00:00Z\n---\nbody\n"},
 		{"bad yaml", "---\nid: [\n---\n# T\n"},
+		{"unknown key", "---\nid: a1\nstatus: open\nblockd-by: [x]\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
+		{"v1 key", "---\nid: a1\nstatus: open\npriority: 1\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
 		{"bad id", "---\nid: ../x\nstatus: open\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
 	}
 	for _, tt := range tests {

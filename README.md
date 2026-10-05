@@ -56,10 +56,12 @@ blocked: fanir7 "Add parser" waits on lovet2 "Pick schema" (2.4.1, open)
 
 Exit codes: `0` a ticket was printed (`<id> <position> <title>`), `1` nothing left to do, `2` the top leaf is blocked. Fix a block by closing the blocker, `tk undep`, or reordering.
 
+**Exit codes of every command**: `0` success, `1` `ready`: nothing left to do (also `fsck`: problems found), `2` `ready`: top leaf blocked, `3` any other error (unknown or ambiguous id, missing directory, refused operation, usage error, unreadable tickets). Only `0`, `1` and `2` from `ready` carry meaning; treat `3` as a failure, never as "done".
+
 ## Status rules
 
 - `close` on a ticket with unclosed descendants fails; `tk close --force` closes all descendants too.
-- Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`.
+- Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`. Starting, reopening, adding or moving unclosed work under an `in_progress` or `closed` ancestor resets those ancestors to `open` too; `tk fsck` reports an `in_progress` ticket with unclosed descendants.
 - A childless placeholder container shows up in `ready`; give it children or move it to the bottom.
 
 ## Dependencies
@@ -76,12 +78,12 @@ Exit codes: `0` a ticket was printed (`<id> <position> <title>`), `1` nothing le
 | `tk edit <id>` | Open in `$EDITOR`. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id> [--force]` / `tk reopen <id>` | Status transitions. |
-| `tk ready [epic]` | Highest ready leaf; exit 0/1/2. |
+| `tk ready [epic]` | Highest ready leaf; exit 0/1/2 (3 on error). |
 | `tk mv <id> [--under P \| --root] [--at N \| --before X \| --after X]` | Reparent and/or reposition. |
 | `tk up` / `down` / `top` / `bottom <id>` | Move among siblings. |
-| `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. |
+| `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. `undep` fails (exit 3) if the blocker is not currently listed. |
 | `tk rm <id> [--force]` | Refuses if the ticket has children or blocks others; `--force` deletes the subtree and detaches deps. |
-| `tk fsck` | Verify integrity (orphans, duplicate parents, dangling ids, cycles, dep rule violations); exit 1 on problems. |
+| `tk fsck` | Verify integrity (orphans, duplicate parents, dangling ids, cycles, dep rule violations); exit 1 on problems, including unreadable tickets (unknown frontmatter keys, corrupt `ROOT.md`). Every command that modifies tickets refuses to run while any ticket or `ROOT.md` is unreadable. |
 
 Ids are matched by substring (exact match first; error on zero or multiple matches). Positions such as `1.2` are display only and never accepted as arguments, because they shift on reorder. Free-form text (body, notes) can be given inline, on stdin with `-`, or from a file with `-F`. Use `--dir` to change the tickets directory (default `.tickets`).
 
