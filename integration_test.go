@@ -66,7 +66,11 @@ func TestEndToEnd(t *testing.T) {
 	a := run("new", "A", "--under", epic)
 	b := run("new", "B", "--under", epic)
 	c := run("new", "C", "--under", epic)
-	other := run("new", "Other")
+	other := run("new", "Other", "--type", "chore")
+	run("type", other, "bug")
+	if ls := run("ls"); !strings.Contains(ls, other+"  [bug] Other") {
+		t.Fatalf("ls should show type:\n%s", ls)
+	}
 
 	if got := readyID(); got != a {
 		t.Fatalf("ready = %s, want %s (A)", got, a)

@@ -33,7 +33,7 @@ func newReadyCmd(app *App) *cobra.Command {
 			switch res.Outcome {
 			case tree.Found:
 				tk := res.Ticket
-				fmt.Fprintf(w, "%s %s %s\n", tk.ID, t.Position(tk.ID), tk.Title)
+				fmt.Fprintf(w, "%s %s %s\n", tk.ID, t.Position(tk.ID), titleWithType(tk))
 				return nil
 			case tree.Blocked:
 				fmt.Fprintf(w, "blocked: %s\n", res.Block.Describe(res.Ticket))

@@ -35,11 +35,44 @@ func ParseStatus(s string) (Status, error) {
 	return st, nil
 }
 
+// Type is the kind of work a ticket describes. It is pure metadata.
+type Type string
+
+const (
+	TypeTask    Type = "task"
+	TypeBug     Type = "bug"
+	TypeFeature Type = "feature"
+	TypeChore   Type = "chore"
+)
+
+// TypeNames lists the valid types, for messages.
+const TypeNames = "task, bug, feature, chore"
+
+// Valid reports whether t is a known type.
+func (t Type) Valid() bool {
+	switch t {
+	case TypeTask, TypeBug, TypeFeature, TypeChore:
+		return true
+	}
+	return false
+}
+
+// ParseType converts a string to a Type, case-insensitively, rejecting
+// unknown values.
+func ParseType(s string) (Type, error) {
+	ty := Type(strings.ToLower(strings.TrimSpace(s)))
+	if !ty.Valid() {
+		return "", fmt.Errorf("invalid type %q (want %s)", s, TypeNames)
+	}
+	return ty, nil
+}
+
 // Ticket is a unit of work. Hierarchy is stored only as the ordered Children
 // list; the parent is derived by scanning.
 type Ticket struct {
 	ID        string
 	Status    Status
+	Type      Type // empty means task
 	BlockedBy []string
 	Children  []string
 	Created   time.Time
@@ -54,6 +87,9 @@ func (t *Ticket) Validate() error {
 	}
 	if !t.Status.Valid() {
 		return fmt.Errorf("ticket %s: invalid status %q", t.ID, t.Status)
+	}
+	if t.Type != "" && !t.Type.Valid() {
+		return fmt.Errorf("ticket %s: invalid type %q (want %s)", t.ID, t.Type, TypeNames)
 	}
 	if t.Created.IsZero() {
 		return fmt.Errorf("ticket %s: missing created timestamp", t.ID)

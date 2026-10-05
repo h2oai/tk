@@ -818,3 +818,27 @@ func TestInProgressAncestorResetByOpenWork(t *testing.T) {
 		t.Errorf("fsck = %v", ps)
 	}
 }
+
+func TestSetType(t *testing.T) {
+	tr, st := build(t, "a:closed\n  a1:closed")
+	ok, err := tr.SetType("a1", store.TypeBug)
+	if err != nil || !ok {
+		t.Fatalf("SetType = %v, %v", ok, err)
+	}
+	r := reloaded(t, st)
+	if r.Get("a1").Type != store.TypeBug {
+		t.Errorf("type = %q", r.Get("a1").Type)
+	}
+	if r.Get("a").Status != store.StatusClosed || r.Get("a1").Status != store.StatusClosed {
+		t.Error("set-type changed status")
+	}
+	if ok, err := tr.SetType("a1", store.TypeBug); err != nil || ok {
+		t.Errorf("same type = %v, %v; want silent no-op", ok, err)
+	}
+	if _, err := tr.SetType("a1", "epic"); err == nil {
+		t.Error("expected error for invalid type")
+	}
+	if _, err := tr.SetType("nope", store.TypeChore); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("err = %v", err)
+	}
+}

@@ -83,6 +83,9 @@ func (t *Tree) Add(tk *store.Ticket, parent string, p Place) error {
 	if err := tk.Validate(); err != nil {
 		return err
 	}
+	if tk.Type == "" {
+		tk.Type = store.TypeTask
+	}
 	if len(tk.Children) > 0 {
 		return fmt.Errorf("new ticket %s must not have children", tk.ID)
 	}
@@ -267,4 +270,27 @@ func (t *Tree) AppendNote(id, text string, at time.Time) error {
 		t.touch(id)
 		return nil
 	})
+}
+
+// SetType sets the ticket type. It is pure metadata: no status or ancestor
+// effects, and setting the current type is a no-op. It reports whether
+// anything changed.
+func (t *Tree) SetType(id string, ty store.Type) (bool, error) {
+	if !ty.Valid() {
+		_, err := store.ParseType(string(ty))
+		return false, err
+	}
+	tk, err := t.mustExist(id)
+	if err != nil {
+		return false, err
+	}
+	if tk.Type == ty || (tk.Type == "" && ty == store.TypeTask) {
+		return false, nil
+	}
+	err = t.apply(func() error {
+		tk.Type = ty
+		t.touch(id)
+		return nil
+	})
+	return err == nil, err
 }

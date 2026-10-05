@@ -27,6 +27,9 @@ func TestRoundTrip(t *testing.T) {
 		{"body with fences", Ticket{ID: "a1", Status: StatusOpen, Created: ts, Title: "T", Body: "---\nid: x\n---\n# H\n"}},
 		{"title with colon and hash", Ticket{ID: "a1", Status: StatusOpen, Created: ts, Title: "fix: # thing"}},
 		{"unicode", Ticket{ID: "a1", Status: StatusOpen, Created: ts, Title: "héllo ✓", Body: "日本語\n"}},
+		{"bug", Ticket{ID: "a1", Status: StatusOpen, Type: TypeBug, Created: ts, Title: "T"}},
+		{"feature", Ticket{ID: "a1", Status: StatusOpen, Type: TypeFeature, Created: ts, Title: "T"}},
+		{"chore", Ticket{ID: "a1", Status: StatusOpen, Type: TypeChore, Created: ts, Title: "T"}},
 		{"non-utc created", Ticket{ID: "a1", Status: StatusOpen, Created: ts.In(time.FixedZone("x", 3600)), Title: "T"}},
 	}
 	for _, tt := range tests {
@@ -43,8 +46,12 @@ func TestRoundTrip(t *testing.T) {
 				t.Errorf("created = %v, want %v", got.Created, tt.in.Created)
 			}
 			got.Created = tt.in.Created
-			if !reflect.DeepEqual(got, &tt.in) {
-				t.Errorf("got %+v, want %+v", got, &tt.in)
+			want := tt.in
+			if want.Type == "" {
+				want.Type = TypeTask
+			}
+			if !reflect.DeepEqual(got, &want) {
+				t.Errorf("got %+v, want %+v", got, &want)
 			}
 		})
 	}
@@ -56,7 +63,7 @@ func TestMarshalFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "---\nid: fanir7\nstatus: open\nblocked-by: [lovet2]\nchildren: [kamop3, ritus9]\ncreated: 2026-10-05T12:00:00Z\n---\n# Title\n\nBody\n"
+	want := "---\nid: fanir7\nstatus: open\ntype: task\nblocked-by: [lovet2]\nchildren: [kamop3, ritus9]\ncreated: 2026-10-05T12:00:00Z\n---\n# Title\n\nBody\n"
 	if string(data) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", data, want)
 	}
@@ -73,6 +80,7 @@ func TestUnmarshalErrors(t *testing.T) {
 		{"bad yaml", "---\nid: [\n---\n# T\n"},
 		{"unknown key", "---\nid: a1\nstatus: open\nblockd-by: [x]\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
 		{"v1 key", "---\nid: a1\nstatus: open\npriority: 1\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
+		{"bad type", "---\nid: a1\nstatus: open\ntype: epic\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
 		{"bad id", "---\nid: ../x\nstatus: open\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
 	}
 	for _, tt := range tests {
@@ -230,7 +238,7 @@ func newStore(t *testing.T) *Store {
 
 func TestStoreCRUD(t *testing.T) {
 	s := newStore(t)
-	a := &Ticket{ID: "fanir7", Status: StatusOpen, Created: ts, Title: "A", Body: "body\n"}
+	a := &Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "A", Body: "body\n"}
 	b := &Ticket{ID: "lovet2", Status: StatusClosed, Created: ts, Title: "B"}
 	for _, tk := range []*Ticket{b, a} {
 		if err := s.Save(tk); err != nil {
@@ -377,5 +385,31 @@ func TestInit(t *testing.T) {
 	}
 	if got, _ := s.LoadRoots(); !reflect.DeepEqual(got, []string{"fanir7"}) {
 		t.Errorf("roots = %v", got)
+	}
+}
+
+func TestMissingTypeIsTask(t *testing.T) {
+	tk, err := Unmarshal([]byte("---\nid: a1\nstatus: open\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Type != TypeTask {
+		t.Errorf("type = %q, want task", tk.Type)
+	}
+	if _, err := Marshal(&Ticket{ID: "a1", Status: StatusOpen, Type: "epic", Created: ts, Title: "T"}); err == nil {
+		t.Error("expected error for invalid type")
+	}
+}
+
+func TestParseType(t *testing.T) {
+	for in, want := range map[string]Type{"task": TypeTask, "BUG": TypeBug, " Feature ": TypeFeature, "chore": TypeChore} {
+		if got, err := ParseType(in); err != nil || got != want {
+			t.Errorf("ParseType(%q) = %q, %v", in, got, err)
+		}
+	}
+	for _, in := range []string{"", "epic", "x"} {
+		if _, err := ParseType(in); err == nil || !strings.Contains(err.Error(), "task, bug, feature, chore") {
+			t.Errorf("ParseType(%q) err = %v", in, err)
+		}
 	}
 }

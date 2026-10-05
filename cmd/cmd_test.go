@@ -211,7 +211,7 @@ func TestReadyExitCodes(t *testing.T) {
 	b := e.newT("Beta")
 
 	out := e.run("ready")
-	contains(t, out, a+" 1 Alpha")
+	contains(t, out, a+" 1 [task] Alpha")
 
 	// blocked: Alpha waits on Beta.
 	e.block(a, b)
@@ -236,7 +236,7 @@ func TestReadyScope(t *testing.T) {
 	b := e.newT("B")
 	bc := e.newT("BChild", "--under", b)
 	contains(t, e.run("ready"), a)
-	contains(t, e.run("ready", b), bc+" 2.1 BChild")
+	contains(t, e.run("ready", b), bc+" 2.1 [task] BChild")
 }
 
 func TestEdit(t *testing.T) {
@@ -336,4 +336,32 @@ func TestUnknownFrontmatterKeyIsReported(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != bad {
 		t.Error("file rewritten")
 	}
+}
+
+func TestTypes(t *testing.T) {
+	e := newEnv(t)
+	a := e.newT("Fix crash", "--type", "bug")
+	b := e.newT("Plain")
+	contains(t, e.run("show", a), "type:     bug")
+	contains(t, e.run("show", b), "type:     task")
+	contains(t, e.run("ls"), a+"  [bug] Fix crash")
+	contains(t, e.run("ready"), a+" 1 [bug] Fix crash")
+
+	_, errs, _ := e.fail("new", "X", "--type", "epic")
+	contains(t, errs, "task, bug, feature, chore")
+
+	// Case-insensitive, stored lowercase, works on closed tickets, no-op silent.
+	e.run("close", b)
+	contains(t, e.run("type", b, "FEATURE"), "feature")
+	contains(t, e.run("show", b), "type:     feature")
+	contains(t, e.run("show", b), "status:   closed")
+	if out := e.run("type", b, "feature"); out != "" {
+		t.Errorf("no-op printed %q", out)
+	}
+	raw, err := os.ReadFile(filepath.Join(e.dir, b+".md"))
+	if err != nil || !strings.Contains(string(raw), "type: feature\n") {
+		t.Errorf("file: %v\n%s", err, raw)
+	}
+	_, errs, _ = e.fail("type", b, "epic")
+	contains(t, errs, "task, bug, feature, chore")
 }

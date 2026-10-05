@@ -27,6 +27,7 @@ func (l flowList) MarshalYAML() (any, error) {
 type frontmatter struct {
 	ID        string    `yaml:"id"`
 	Status    Status    `yaml:"status"`
+	Type      Type      `yaml:"type"`
 	BlockedBy flowList  `yaml:"blocked-by,omitempty"`
 	Children  flowList  `yaml:"children,omitempty"`
 	Created   time.Time `yaml:"created"`
@@ -47,9 +48,14 @@ func Marshal(t *Ticket) ([]byte, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
+	ty := t.Type
+	if ty == "" {
+		ty = TypeTask
+	}
 	fm, err := yaml.Marshal(frontmatter{
 		ID:        t.ID,
 		Status:    t.Status,
+		Type:      ty,
 		BlockedBy: t.BlockedBy,
 		Children:  t.Children,
 		Created:   t.Created.UTC(),
@@ -114,9 +120,13 @@ func UnmarshalAt(data []byte, fallback time.Time) (*Ticket, error) {
 	if fm.Created.IsZero() {
 		fm.Created = fallback
 	}
+	if fm.Type == "" {
+		fm.Type = TypeTask
+	}
 	t := &Ticket{
 		ID:        fm.ID,
 		Status:    fm.Status,
+		Type:      fm.Type,
 		BlockedBy: fm.BlockedBy,
 		Children:  fm.Children,
 		Created:   fm.Created,

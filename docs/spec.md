@@ -6,13 +6,13 @@ This replaces the current codebase (including `chain`, `readytree`, `deptree`, p
 
 ## Concepts
 
-- **Ticket**: a unit of work with a title, body, status and optional blockers.
+- **Ticket**: a unit of work with a title, body, status, type and optional blockers. The type (`task|bug|feature|chore`, default `task`) is pure metadata: it never affects `ready`, status rules, ordering or deps. `epic` is not a type.
 - **Tree**: every ticket has at most one parent. Tickets with no parent are *roots*. Roots are ordered, and each ticket's children are ordered.
 - **Epic**: not a type. A ticket is an epic if and only if it has children. Any ticket can have children, at any depth.
 - **Order**: siblings are ordered by their position in the parent's `children` list (roots by `ROOT.md`). Earlier means picked up first. The global order is DFS preorder over roots.
 - **Leaf**: a ticket with no children.
 
-There is no priority, type, assignee, links or external-ref. Order and hierarchy replace them.
+There is no priority, assignee, links or external-ref. Order and hierarchy replace them.
 
 ## On-disk layout
 
@@ -28,6 +28,7 @@ There is no priority, type, assignee, links or external-ref. Order and hierarchy
 ---
 id: fanir7
 status: open            # open | in_progress | closed
+type: task              # task | bug | feature | chore (pure metadata; missing reads as task)
 blocked-by: [lovet2]
 children: [kamop3, ritus9]   # ordered; first is picked up first
 created: 2026-10-05T12:00:00Z
@@ -65,7 +66,7 @@ Blocking: a ticket is blocked if it, or any ancestor, has an unclosed ticket in 
 blocked: fanir7 "Add parser" waits on lovet2 "Pick schema" (2.4.1, open)
 ```
 
-Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf is blocked.
+Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] Fix crash`. Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf is blocked.
 
 ## Dependencies (`blocked-by`)
 
@@ -80,9 +81,10 @@ Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf
 
 | Command | Behaviour |
 |---|---|
-| `tk new "Title" [--under P] [--at N] [-b body \| -b - \| -F file]` | Create a ticket. Default: append as last child of `P`, or last root. |
-| `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Closed subtrees hidden unless `--all`. Positions are display only. Walks from `ROOT.md`, so unreachable tickets (orphans) are not shown; when any exist, a one-line warning goes to stderr pointing at `tk fsck`. |
-| `tk show <id>` | Title, body, status, blockers, children, position. |
+| `tk new "Title" [--type T] [--under P] [--at N] [-b body \| -b - \| -F file]` | Create a ticket; `--type` is `task` (default), `bug`, `feature` or `chore`. Default: append as last child of `P`, or last root. |
+| `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Each line shows `[type]` before the title. Closed subtrees hidden unless `--all`. Positions are display only. Walks from `ROOT.md`, so unreachable tickets (orphans) are not shown; when any exist, a one-line warning goes to stderr pointing at `tk fsck`. |
+| `tk show <id>` | Title, body, status, type, blockers, children, position. |
+| `tk type <id> <type>` | Set the type (case-insensitive, stored lowercase). Works on any status; setting the current type is a silent no-op; no status or ancestor effects. |
 | `tk edit <id>` | Open in `$EDITOR`. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id>` / `tk reopen <id>` | Status transitions, with the rules above. |
@@ -100,7 +102,7 @@ Free-form text input contract: inline, stdin with `-`, or file with `-F`.
 ## Non-goals
 
 - Multiple concurrent workers or claims: single worker assumed. Use `tk ready <epic>` to scope parallel streams by hand.
-- Priority, type, assignee, links, jq `query`, live `--watch` tree, `prune`, `clean`, archive.
+- Priority, assignee, links, jq `query`, live `--watch` tree, `prune`, `clean`, archive.
 - Positional addressing and a single outline file.
 
 ## Implementation notes
