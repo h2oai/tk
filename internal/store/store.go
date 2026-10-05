@@ -179,7 +179,7 @@ func (s *Store) LoadRoots() ([]string, error) {
 	} else if err != nil {
 		return nil, fmt.Errorf("read ROOT.md: %w", err)
 	}
-	text, ok := strings.CutPrefix(string(data), fence)
+	text, ok := strings.CutPrefix(normalizeNewlines(data), fence)
 	if !ok {
 		return nil, errors.New("parse ROOT.md: missing frontmatter")
 	}

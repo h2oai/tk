@@ -81,7 +81,7 @@ Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf
 | Command | Behaviour |
 |---|---|
 | `tk new "Title" [--under P] [--at N] [-b body \| -b - \| -F file]` | Create a ticket. Default: append as last child of `P`, or last root. |
-| `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Closed subtrees hidden unless `--all`. Positions are display only. |
+| `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Closed subtrees hidden unless `--all`. Positions are display only. Walks from `ROOT.md`, so unreachable tickets (orphans) are not shown; when any exist, a one-line warning goes to stderr pointing at `tk fsck`. |
 | `tk show <id>` | Title, body, status, blockers, children, position. |
 | `tk edit <id>` | Open in `$EDITOR`. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
@@ -91,7 +91,7 @@ Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf
 | `tk up/down/top/bottom <id>` | Move within siblings. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage `blocked-by`. |
 | `tk rm <id>` | Refuses if the ticket has children or is anyone's blocker. `--force` deletes the subtree and detaches deps. |
-| `tk fsck` | Verify integrity: orphans, ticket in two parents, dangling ids, cycles, dep rule violations. |
+| `tk fsck` | Verify integrity: orphans, ticket in two parents, dangling ids, cycles, dep rule violations. Orphan lines hint at the repair: `tk mv <id> --root` (or `--under`) re-attaches the ticket with its subtree. |
 
 Addressing is by id only (partial matching). Positional paths are never accepted as arguments, because they shift on reorder.
 

@@ -68,9 +68,16 @@ func Marshal(t *Ticket) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// Unmarshal parses the on-disk form produced by Marshal.
+// normalizeNewlines converts CRLF to LF so files touched by Windows editors or
+// git autocrlf still parse. The next save rewrites them with LF.
+func normalizeNewlines(data []byte) string {
+	return strings.ReplaceAll(string(data), "\r\n", "\n")
+}
+
+// Unmarshal parses the on-disk form produced by Marshal. CRLF line endings are
+// accepted.
 func Unmarshal(data []byte) (*Ticket, error) {
-	s := string(data)
+	s := normalizeNewlines(data)
 	rest, ok := strings.CutPrefix(s, fence)
 	if !ok {
 		return nil, errors.New("missing frontmatter")
@@ -106,7 +113,7 @@ func Unmarshal(data []byte) (*Ticket, error) {
 		BlockedBy: fm.BlockedBy,
 		Children:  fm.Children,
 		Created:   fm.Created,
-		Title:     strings.TrimRight(title, "\r"),
+		Title:     title,
 		Body:      body,
 	}
 	if err := t.Validate(); err != nil {

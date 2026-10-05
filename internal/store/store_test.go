@@ -82,6 +82,17 @@ func TestUnmarshalErrors(t *testing.T) {
 	}
 }
 
+func TestUnmarshalCRLF(t *testing.T) {
+	in := "---\r\nid: a1\r\nstatus: open\r\nchildren: [b2]\r\ncreated: 2026-10-05T12:00:00Z\r\n---\r\n# Title\r\n\r\nline1\r\nline2\r\n"
+	got, err := Unmarshal([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "Title" || got.Body != "line1\nline2\n" || !reflect.DeepEqual(got.Children, []string{"b2"}) {
+		t.Errorf("got %+v", got)
+	}
+}
+
 func TestMarshalInvalid(t *testing.T) {
 	tests := []struct {
 		name string
@@ -92,6 +103,8 @@ func TestMarshalInvalid(t *testing.T) {
 		{"path id", Ticket{ID: "a/b", Status: StatusOpen, Title: "T"}},
 		{"reserved id", Ticket{ID: "ROOT", Status: StatusOpen, Title: "T"}},
 		{"multiline title", Ticket{ID: "a1", Status: StatusOpen, Title: "a\nb"}},
+		{"empty title", Ticket{ID: "a1", Status: StatusOpen}},
+		{"blank title", Ticket{ID: "a1", Status: StatusOpen, Title: "  "}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -292,6 +305,17 @@ func TestRoots(t *testing.T) {
 				t.Errorf("got %v, %v; want %v", got, err, tt.roots)
 			}
 		})
+	}
+}
+
+func TestRootsCRLF(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ROOT.md"), []byte("---\r\nroots: [a1, b2]\r\n---\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := New(dir).LoadRoots()
+	if err != nil || !reflect.DeepEqual(got, []string{"a1", "b2"}) {
+		t.Errorf("got %v, %v", got, err)
 	}
 }
 
