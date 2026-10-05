@@ -31,9 +31,6 @@ func (a *App) LoadTree() (*tree.Tree, error) {
 	return tree.Load(a.Store())
 }
 
-// ResolveID resolves a full or partial id against the loaded tree.
-func ResolveID(t *tree.Tree, partial string) (string, error) { return t.Resolve(partial) }
-
 // LoadResolved loads the tree and resolves each partial id, in order.
 func (a *App) LoadResolved(partials ...string) (*tree.Tree, []string, error) {
 	t, err := a.LoadTree()

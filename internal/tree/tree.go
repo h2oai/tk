@@ -15,7 +15,6 @@ import (
 
 // Sentinel errors that callers can test with errors.Is.
 var (
-	ErrNotFound        = store.ErrNotFound
 	ErrExists          = errors.New("ticket already exists")
 	ErrOpenDescendants = errors.New("has descendants that are not closed")
 	ErrNotLeaf         = errors.New("has descendants that are not closed; start one of them")
@@ -176,9 +175,6 @@ func (t *Tree) IsLeaf(id string) bool {
 	return tk != nil && len(tk.Children) == 0
 }
 
-// PositionOf returns the 1-based path of id, or nil if it is unreachable.
-func (t *Tree) PositionOf(id string) []int { return slices.Clone(t.pos[id]) }
-
 // Position formats the position of id as "2.1.3", or "" if unreachable.
 func (t *Tree) Position(id string) string {
 	p := t.pos[id]
@@ -245,7 +241,7 @@ func (t *Tree) hasUnclosed(ids []string) bool {
 func (t *Tree) mustExist(id string) (*store.Ticket, error) {
 	tk := t.tickets[id]
 	if tk == nil {
-		return nil, fmt.Errorf("%s: %w", id, ErrNotFound)
+		return nil, fmt.Errorf("%s: %w", id, store.ErrNotFound)
 	}
 	return tk, nil
 }

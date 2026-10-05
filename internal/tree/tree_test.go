@@ -172,7 +172,7 @@ func TestReadyBlockedMessage(t *testing.T) {
 	if want := `a "T a" waits on b1 "T b1" (2.1, open)`; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
-	if _, err := tr.Ready("nope"); !errors.Is(err, ErrNotFound) {
+	if _, err := tr.Ready("nope"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("unknown scope err = %v", err)
 	}
 }
@@ -248,7 +248,7 @@ func TestStatus(t *testing.T) {
 	})
 	t.Run("unknown", func(t *testing.T) {
 		tr, _ := build(t, "a")
-		if _, err := tr.Close("zz", false); !errors.Is(err, ErrNotFound) {
+		if _, err := tr.Close("zz", false); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("err = %v", err)
 		}
 	})
@@ -276,7 +276,7 @@ func TestAdd(t *testing.T) {
 		{"anchor not sibling", "a", Place{Before: "b"}, "", ErrBadPlace},
 		{"two modes", "a", Place{Index: 1, Before: "a1"}, "", ErrBadPlace},
 		{"bad index", "a", Place{Index: -5}, "", ErrBadPlace},
-		{"missing parent", "zz", Place{}, "", ErrNotFound},
+		{"missing parent", "zz", Place{}, "", store.ErrNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -334,7 +334,7 @@ func TestAdd(t *testing.T) {
 		}
 		bad := newTk("m")
 		bad.BlockedBy = []string{"n", "zz"}
-		if err := tr.Add(bad, "", Place{}); !errors.Is(err, ErrNotFound) || tr.Get("m") != nil {
+		if err := tr.Add(bad, "", Place{}); !errors.Is(err, store.ErrNotFound) || tr.Get("m") != nil {
 			t.Errorf("err = %v", err)
 		}
 	})
@@ -356,8 +356,8 @@ func TestMove(t *testing.T) {
 		{"root reorder before", "c", "", Place{Before: "a"}, "c\n c1\na\n a1\n a2\n  a2x\nb\n", nil},
 		{"under self", "a", "a", Place{}, "", ErrCycle},
 		{"under descendant", "a", "a2x", Place{}, "", ErrCycle},
-		{"missing", "zz", "", Place{}, "", ErrNotFound},
-		{"missing parent", "a", "zz", Place{}, "", ErrNotFound},
+		{"missing", "zz", "", Place{}, "", store.ErrNotFound},
+		{"missing parent", "a", "zz", Place{}, "", store.ErrNotFound},
 		{"bad anchor", "a1", "b", Place{Before: "a2"}, "", ErrBadPlace},
 		{"anchor is self", "a1", "a", Place{Before: "a1"}, "", ErrBadPlace},
 	}
@@ -487,7 +487,7 @@ func TestReorder(t *testing.T) {
 		})
 	}
 	tr, _ := build(t, "a")
-	if err := tr.Up("zz"); !errors.Is(err, ErrNotFound) {
+	if err := tr.Up("zz"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -578,8 +578,8 @@ func TestDeps(t *testing.T) {
 		{"cycle via parent link 2", [][2]string{{"c1", "q"}}, "q", "p", ErrDepCycle},
 		{"cycle via inheritance", [][2]string{{"p", "q"}}, "q", "c1", ErrDepCycle},
 		{"duplicate idempotent", [][2]string{{"q", "r"}}, "q", "r", nil},
-		{"missing blocker", nil, "q", "zz", ErrNotFound},
-		{"missing ticket", nil, "zz", "q", ErrNotFound},
+		{"missing blocker", nil, "q", "zz", store.ErrNotFound},
+		{"missing ticket", nil, "zz", "q", store.ErrNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -628,7 +628,7 @@ func TestRemoveDep(t *testing.T) {
 	if len(reloaded(t, st).Get("a").BlockedBy) != 0 {
 		t.Error("not removed")
 	}
-	if err := tr.RemoveDep("zz", "b"); !errors.Is(err, ErrNotFound) {
+	if err := tr.RemoveDep("zz", "b"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v", err)
 	}
 }

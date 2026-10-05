@@ -119,34 +119,8 @@ func (s *Store) IDs() ([]string, error) {
 	return ids, nil
 }
 
-// List loads every ticket, sorted by id.
-func (s *Store) List() ([]*Ticket, error) {
-	ids, err := s.IDs()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]*Ticket, 0, len(ids))
-	for _, id := range ids {
-		t, err := s.Load(id)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, t)
-	}
-	return out, nil
-}
-
 // ResolveID maps a full or partial id to a full id. An exact match wins;
 // otherwise exactly one id must contain the input as a substring.
-func (s *Store) ResolveID(partial string) (string, error) {
-	ids, err := s.IDs()
-	if err != nil {
-		return "", err
-	}
-	return ResolveID(ids, partial)
-}
-
-// ResolveID is the pure matching logic behind Store.ResolveID.
 func ResolveID(ids []string, partial string) (string, error) {
 	if partial == "" {
 		return "", errors.New("empty ticket id")

@@ -241,14 +241,6 @@ func TestStoreCRUD(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, a) {
 		t.Fatalf("Load = %+v, %v", got, err)
 	}
-	list, err := s.List()
-	if err != nil || len(list) != 2 || list[0].ID != "fanir7" || list[1].ID != "lovet2" {
-		t.Fatalf("List = %+v, %v", list, err)
-	}
-	id, err := s.ResolveID("ovet")
-	if err != nil || id != "lovet2" {
-		t.Errorf("ResolveID = %q, %v", id, err)
-	}
 	if err := s.Delete("fanir7"); err != nil {
 		t.Fatal(err)
 	}
