@@ -38,7 +38,7 @@ Body text, notes appended as timestamped sections.
 ```
 
 - The hierarchy is stored **only** in `children` lists and `ROOT.md`. A child does not store its parent; the parent is derived by scanning.
-- IDs keep the current scheme (pronounceable CVCVC plus trailing digit, crypto/rand) and partial matching (exact match first, then substring; error on zero or multiple matches).
+- IDs are pronounceable five-letter stems followed by a digit 1–9 (e.g. `fanir7`, `igoro8`). The stem is either CVCVC (consonant-vowel-consonant-vowel-consonant) or VCVCV (vowel-consonant-vowel-consonant-vowel), chosen randomly; Q and X are excluded from consonants, and 0 is excluded from digits to avoid confusion with letters. Partial matching: exact match first, then substring; error on zero or multiple matches.
 - Writes are atomic (temp file then rename). `mv` edits up to three files (old parent, new parent, and the moved ticket is untouched).
 - `tk` directory defaults to `.tickets`, override with `--dir`.
 
