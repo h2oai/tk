@@ -67,6 +67,8 @@ func TestUnmarshalErrors(t *testing.T) {
 		{"no frontmatter", "# T\n"},
 		{"unterminated", "---\nid: a1\n"},
 		{"bad status", "---\nid: a1\nstatus: nope\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
+		{"missing created", "---\nid: a1\nstatus: open\n---\n# T\n"},
+		{"zero created", "---\nid: a1\nstatus: open\ncreated: 0001-01-01T00:00:00Z\n---\n# T\n"},
 		{"no title", "---\nid: a1\nstatus: open\ncreated: 2026-10-05T12:00:00Z\n---\nbody\n"},
 		{"bad yaml", "---\nid: [\n---\n# T\n"},
 		{"unknown key", "---\nid: a1\nstatus: open\nblockd-by: [x]\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"},
@@ -93,6 +95,33 @@ func TestUnmarshalCRLF(t *testing.T) {
 	}
 }
 
+func TestMissingCreatedDefaults(t *testing.T) {
+	fb := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, in := range []string{
+		"---\nid: a1\nstatus: open\n---\n# T\n",
+		"---\nid: a1\nstatus: open\ncreated: 0001-01-01T00:00:00Z\n---\n# T\n",
+	} {
+		got, err := UnmarshalAt([]byte(in), fb)
+		if err != nil || !got.Created.Equal(fb) {
+			t.Errorf("got %v, %v; want created %v", got, err, fb)
+		}
+	}
+
+	// Load falls back to the file's modification time.
+	s := newStore(t)
+	path := filepath.Join(s.Dir, "a1.md")
+	if err := os.WriteFile(path, []byte("---\nid: a1\nstatus: open\n---\n# T\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, fb, fb); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Load("a1")
+	if err != nil || !got.Created.Equal(fb) {
+		t.Errorf("got %v, %v; want created %v", got, err, fb)
+	}
+}
+
 func TestMarshalInvalid(t *testing.T) {
 	tests := []struct {
 		name string
@@ -103,6 +132,7 @@ func TestMarshalInvalid(t *testing.T) {
 		{"path id", Ticket{ID: "a/b", Status: StatusOpen, Title: "T"}},
 		{"reserved id", Ticket{ID: "ROOT", Status: StatusOpen, Title: "T"}},
 		{"multiline title", Ticket{ID: "a1", Status: StatusOpen, Title: "a\nb"}},
+		{"zero created", Ticket{ID: "a1", Status: StatusOpen, Title: "T"}},
 		{"empty title", Ticket{ID: "a1", Status: StatusOpen}},
 		{"blank title", Ticket{ID: "a1", Status: StatusOpen, Title: "  "}},
 	}

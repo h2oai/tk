@@ -55,6 +55,9 @@ func (t *Ticket) Validate() error {
 	if !t.Status.Valid() {
 		return fmt.Errorf("ticket %s: invalid status %q", t.ID, t.Status)
 	}
+	if t.Created.IsZero() {
+		return fmt.Errorf("ticket %s: missing created timestamp", t.ID)
+	}
 	if strings.TrimSpace(t.Title) == "" {
 		return fmt.Errorf("ticket %s: title must not be empty", t.ID)
 	}

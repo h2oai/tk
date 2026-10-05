@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -56,7 +57,13 @@ func (s *Store) Load(id string) (*Ticket, error) {
 	} else if err != nil {
 		return nil, fmt.Errorf("read %s: %w", id, err)
 	}
-	t, err := Unmarshal(data)
+	// A ticket without created (hand-written or generated) gets the file's
+	// modification time, which is persisted on its next save.
+	var mtime time.Time
+	if fi, err := os.Stat(s.path(id)); err == nil {
+		mtime = fi.ModTime().UTC().Truncate(time.Second)
+	}
+	t, err := UnmarshalAt(data, mtime)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", id, err)
 	}

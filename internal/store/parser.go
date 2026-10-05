@@ -75,8 +75,12 @@ func normalizeNewlines(data []byte) string {
 }
 
 // Unmarshal parses the on-disk form produced by Marshal. CRLF line endings are
-// accepted.
-func Unmarshal(data []byte) (*Ticket, error) {
+// accepted. A missing or zero created timestamp is an error.
+func Unmarshal(data []byte) (*Ticket, error) { return UnmarshalAt(data, time.Time{}) }
+
+// UnmarshalAt is Unmarshal, except that a missing or zero created timestamp
+// is replaced by fallback.
+func UnmarshalAt(data []byte, fallback time.Time) (*Ticket, error) {
 	s := normalizeNewlines(data)
 	rest, ok := strings.CutPrefix(s, fence)
 	if !ok {
@@ -107,6 +111,9 @@ func Unmarshal(data []byte) (*Ticket, error) {
 		return nil, errors.New("missing '# Title' heading")
 	}
 	body = strings.TrimPrefix(body, "\n")
+	if fm.Created.IsZero() {
+		fm.Created = fallback
+	}
 	t := &Ticket{
 		ID:        fm.ID,
 		Status:    fm.Status,
