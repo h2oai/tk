@@ -5,7 +5,7 @@ This project uses **tk** for ticket tracking. Tickets are markdown files in `.ti
 ## Workflow
 
 ```bash
-tk ready              # next ticket: "<id> <position> <title>"
+tk ready              # next ticket: "<id> <position> [<type>] <title>"
 tk show <id>          # read it (partial ids work)
 tk start <id>         # claim it (in_progress)
 tk note <id> "..."    # record progress / decisions
@@ -33,6 +33,7 @@ tk new "Parser" --under "$epic" -b - <<'EOF'
 Body text with `code`, $VARS and "quotes".
 EOF
 tk new "Urgent fix" --under "$epic" --at 1    # insert first
+tk new "Crash on empty input" --type bug     # task (default), bug, feature or chore
 tk ls                                         # outline with positions
 ```
 
@@ -61,6 +62,8 @@ Descendants inherit an ancestor's blockers. Cycles and ancestor/descendant deps 
 - Adding a child to a closed or in_progress ticket resets it to open (it is now an epic). So does starting, reopening or moving unclosed work under it.
 - If a ticket file or `ROOT.md` is unreadable (e.g. an unknown frontmatter key), `tk` refuses to modify anything until `tk fsck` is clean; fix the file by hand.
 - `tk rm <id>` refuses if it has children or blocks others; `--force` deletes the subtree.
+- `tk type <id> <task|bug|feature|chore>` changes the type; it is metadata only and never affects `tk ready`, order or dependencies.
+- `tk ls [--all] [id]` prints the outline (`--all` includes closed subtrees). `tk tui` is an interactive reorder UI for humans; do not run it.
 - `tk reopen <id>` sets a ticket back to open. `tk fsck` checks integrity.
 - Free-form text (body, notes) can be given inline, via `-` (stdin) or `-F file`. Use a quoted heredoc for anything with backticks, `$` or quotes.
 
