@@ -25,7 +25,7 @@ func newShowCmd(app *App) *cobra.Command {
 			fmt.Fprintf(&b, "# %s\n", tk.Title)
 			fmt.Fprintf(&b, "id:       %s\n", id)
 			fmt.Fprintf(&b, "status:   %s\n", tk.Status)
-			fmt.Fprintf(&b, "type:     %s\n", typeOf(tk))
+			fmt.Fprintf(&b, "type:     %s\n", tk.Type)
 			fmt.Fprintf(&b, "position: %s\n", t.Position(id))
 			if p := t.Parent(id); p != "" {
 				fmt.Fprintf(&b, "parent:   %s %q\n", p, t.Get(p).Title)

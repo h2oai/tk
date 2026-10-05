@@ -72,7 +72,7 @@ func ParseType(s string) (Type, error) {
 type Ticket struct {
 	ID        string
 	Status    Status
-	Type      Type // empty means task
+	Type      Type
 	BlockedBy []string
 	Children  []string
 	Created   time.Time
@@ -88,7 +88,7 @@ func (t *Ticket) Validate() error {
 	if !t.Status.Valid() {
 		return fmt.Errorf("ticket %s: invalid status %q", t.ID, t.Status)
 	}
-	if t.Type != "" && !t.Type.Valid() {
+	if !t.Type.Valid() {
 		return fmt.Errorf("ticket %s: invalid type %q (want %s)", t.ID, t.Type, TypeNames)
 	}
 	if t.Created.IsZero() {

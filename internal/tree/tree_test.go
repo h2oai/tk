@@ -38,7 +38,7 @@ func build(t *testing.T, outline string) (*Tree, *store.Store) {
 		if depth > 0 {
 			parent = stack[depth-1]
 		}
-		tk := &store.Ticket{ID: id, Status: store.Status(status), Created: time.Now().UTC(), Title: "T " + id}
+		tk := &store.Ticket{ID: id, Status: store.Status(status), Type: store.TypeTask, Created: time.Now().UTC(), Title: "T " + id}
 		if err := tr.Add(tk, parent, Place{}); err != nil {
 			t.Fatalf("add %s: %v", id, err)
 		}
@@ -256,7 +256,7 @@ func TestStatus(t *testing.T) {
 
 func TestAdd(t *testing.T) {
 	newTk := func(id string) *store.Ticket {
-		return &store.Ticket{ID: id, Status: store.StatusOpen, Created: time.Now().UTC(), Title: id}
+		return &store.Ticket{ID: id, Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: id}
 	}
 	tests := []struct {
 		name   string
@@ -641,6 +641,9 @@ func TestFsck(t *testing.T) {
 		}
 		for id, tk := range tickets {
 			tk.ID, tk.Created, tk.Title = id, time.Now().UTC(), id
+			if tk.Type == "" {
+				tk.Type = store.TypeTask
+			}
 			if tk.Status == "" {
 				tk.Status = store.StatusOpen
 			}
@@ -720,7 +723,7 @@ func TestCorruptRootRefusesMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr = reloaded(t, st)
-	extra := &store.Ticket{ID: "x", Status: store.StatusOpen, Created: time.Now().UTC(), Title: "x"}
+	extra := &store.Ticket{ID: "x", Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: "x"}
 	ops := map[string]func() error{
 		"add":    func() error { return tr.Add(extra, "", Place{}) },
 		"move":   func() error { return tr.Move("a", "b", Place{}) },
@@ -797,7 +800,7 @@ func TestInProgressAncestorResetByOpenWork(t *testing.T) {
 	if status(tr, "g") != store.StatusInProgress {
 		t.Fatal("g should be in_progress")
 	}
-	tk := &store.Ticket{ID: "n", Status: store.StatusOpen, Created: time.Now().UTC(), Title: "n"}
+	tk := &store.Ticket{ID: "n", Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: "n"}
 	if err := tr.Add(tk, "p", Place{}); err != nil {
 		t.Fatal(err)
 	}

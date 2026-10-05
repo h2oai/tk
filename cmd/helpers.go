@@ -77,15 +77,7 @@ func placeFromFlags(t *tree.Tree, at int, before, after string) (tree.Place, err
 	return place, nil
 }
 
-// typeOf returns the ticket type, treating an unset type as task.
-func typeOf(tk *store.Ticket) store.Type {
-	if tk.Type == "" {
-		return store.TypeTask
-	}
-	return tk.Type
-}
-
 // titleWithType prefixes the title with its [type] tag for ls and ready.
 func titleWithType(tk *store.Ticket) string {
-	return "[" + string(typeOf(tk)) + "] " + tk.Title
+	return "[" + string(tk.Type) + "] " + tk.Title
 }

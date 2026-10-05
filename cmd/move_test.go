@@ -184,7 +184,7 @@ func TestFsck(t *testing.T) {
 	if err := st.Save(tk); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Save(&store.Ticket{ID: "orphn1", Status: store.StatusOpen, Created: now(), Title: "Orphan"}); err != nil {
+	if err := st.Save(&store.Ticket{ID: "orphn1", Status: store.StatusOpen, Type: store.TypeTask, Created: now(), Title: "Orphan"}); err != nil {
 		t.Fatal(err)
 	}
 	out, _, code := e.fail("fsck")

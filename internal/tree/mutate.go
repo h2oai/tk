@@ -83,9 +83,6 @@ func (t *Tree) Add(tk *store.Ticket, parent string, p Place) error {
 	if err := tk.Validate(); err != nil {
 		return err
 	}
-	if tk.Type == "" {
-		tk.Type = store.TypeTask
-	}
 	if len(tk.Children) > 0 {
 		return fmt.Errorf("new ticket %s must not have children", tk.ID)
 	}
@@ -284,7 +281,7 @@ func (t *Tree) SetType(id string, ty store.Type) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if tk.Type == ty || (tk.Type == "" && ty == store.TypeTask) {
+	if tk.Type == ty {
 		return false, nil
 	}
 	err = t.apply(func() error {

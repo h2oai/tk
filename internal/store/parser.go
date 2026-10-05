@@ -48,14 +48,10 @@ func Marshal(t *Ticket) ([]byte, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
-	ty := t.Type
-	if ty == "" {
-		ty = TypeTask
-	}
 	fm, err := yaml.Marshal(frontmatter{
 		ID:        t.ID,
 		Status:    t.Status,
-		Type:      ty,
+		Type:      t.Type,
 		BlockedBy: t.BlockedBy,
 		Children:  t.Children,
 		Created:   t.Created.UTC(),
