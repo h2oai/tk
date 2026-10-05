@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/itchyny/gojq"
 	"github.com/h2oai/tk/internal/ticket"
+	"github.com/itchyny/gojq"
 )
 
 // TicketJSON represents a ticket in JSON format

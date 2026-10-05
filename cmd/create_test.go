@@ -340,9 +340,9 @@ func TestNewCommand(t *testing.T) {
 
 		id := strings.TrimSpace(output)
 
-		// ID should be 5 lowercase letters plus a digit, with no prefix
-		if !regexp.MustCompile(`^[a-z]{5}[0-9]$`).MatchString(id) {
-			t.Errorf("ID should be 5 lowercase letters plus a digit with no prefix, got: %s", id)
+		// ID should be 5 lowercase letters plus a nonzero digit, with no prefix
+		if !regexp.MustCompile(`^[a-z]{5}[1-9]$`).MatchString(id) {
+			t.Errorf("ID should be 5 lowercase letters plus a nonzero digit with no prefix, got: %s", id)
 		}
 	})
 

@@ -7,14 +7,45 @@ import (
 
 // 1.2 ID Generation Tests
 
-var idPattern = regexp.MustCompile(`^[` + consonants + `][` + vowels + `][` + consonants + `][` + vowels + `][` + consonants + `][` + digits + `]$`)
+// idPatterns are the two valid ID shapes: a CVCVC stem or a VCVCV stem, each
+// followed by a digit.
+var idPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^[` + consonants + `][` + vowels + `][` + consonants + `][` + vowels + `][` + consonants + `][` + digits + `]$`),
+	regexp.MustCompile(`^[` + vowels + `][` + consonants + `][` + vowels + `][` + consonants + `][` + vowels + `][` + digits + `]$`),
+}
 
-// TestGenerateIDFormat tests that IDs are a consonant-vowel-consonant-vowel-consonant string plus a digit
+// TestGenerateIDFormat tests that IDs are a CVCVC or VCVCV stem plus a digit
 func TestGenerateIDFormat(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		id := GenerateID()
-		if !idPattern.MatchString(id) {
-			t.Errorf("ID %q should follow the consonant-vowel-consonant-vowel-consonant-digit pattern", id)
+		valid := false
+		for _, p := range idPatterns {
+			if p.MatchString(id) {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			t.Errorf("ID %q should follow the CVCVC-digit or VCVCV-digit pattern", id)
+		}
+	}
+}
+
+// TestGenerateIDCoversBothShapes tests that both stem shapes are produced
+func TestGenerateIDCoversBothShapes(t *testing.T) {
+	counts := make([]int, len(idPatterns))
+	const n = 200
+	for i := 0; i < n; i++ {
+		id := GenerateID()
+		for j, p := range idPatterns {
+			if p.MatchString(id) {
+				counts[j]++
+			}
+		}
+	}
+	for j, c := range counts {
+		if c == 0 {
+			t.Errorf("stem shape %d never generated in %d IDs", j, n)
 		}
 	}
 }
