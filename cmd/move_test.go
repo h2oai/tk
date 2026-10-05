@@ -47,7 +47,7 @@ func TestMvCycle(t *testing.T) {
 	c := e.newT("C", "--under", b)
 	for _, under := range []string{a, b, c} {
 		_, errs, code := e.fail("mv", a, "--under", under)
-		if code != 1 || !strings.Contains(errs, "own descendant") {
+		if code != 1 || !strings.Contains(errs, "its own ancestor") {
 			t.Errorf("under %s: code %d errs %q", under, code, errs)
 		}
 	}

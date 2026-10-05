@@ -24,16 +24,6 @@ func init() {
 }
 
 // moveErr turns tree sentinel errors into messages aimed at the user.
-func moveErr(err error) error {
-	switch {
-	case errors.Is(err, tree.ErrCycle):
-		return fmt.Errorf("cannot move a ticket under itself or its own descendant: %w", err)
-	case errors.Is(err, tree.ErrBadPlace):
-		return fmt.Errorf("bad position: %w", err)
-	}
-	return err
-}
-
 func printPlace(cmd *cobra.Command, t *tree.Tree, id string) {
 	fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s\n", id, t.Position(id), t.Get(id).Title)
 }
@@ -90,7 +80,7 @@ without any position the ticket is appended last.`,
 				parent = t.Parent(id)
 			}
 			if err := t.Move(id, parent, place); err != nil {
-				return moveErr(err)
+				return err
 			}
 			printPlace(cmd, t, id)
 			return nil
@@ -115,7 +105,7 @@ func newShiftCmd(app *App, name, short string, do func(*tree.Tree, string) error
 				return err
 			}
 			if err := do(t, ids[0]); err != nil {
-				return moveErr(err)
+				return err
 			}
 			printPlace(cmd, t, ids[0])
 			return nil

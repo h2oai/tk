@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 
-	"github.com/h2oai/tk/internal/tree"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +21,6 @@ func newRmCmd(app *App) *cobra.Command {
 			}
 			gone, err := t.Remove(ids[0], force)
 			if err != nil {
-				switch {
-				case errors.Is(err, tree.ErrHasChildren), errors.Is(err, tree.ErrIsBlocker):
-					return fmt.Errorf("refusing to remove: %w", err)
-				}
 				return err
 			}
 			for _, id := range gone {
