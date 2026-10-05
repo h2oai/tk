@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,21 +15,30 @@ func init() { register(newEditCmd) }
 
 func newEditCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "edit <id>",
-		Short: "Edit a ticket in $EDITOR",
-		Args:  cobra.ExactArgs(1),
+		Use:         "edit <id>",
+		Annotations: map[string]string{lockAnnotation: lockNone},
+		Short:       "Edit a ticket in $EDITOR",
+		Args:        cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			editor := os.Getenv("EDITOR")
 			if editor == "" {
 				return fmt.Errorf("$EDITOR is not set")
 			}
+			// The editor can stay open for a long time, so the lock is held only
+			// while reading the ticket and again while saving the result.
+			unlock, err := app.Lock(false)
+			if err != nil {
+				return err
+			}
 			t, ids, err := app.LoadResolved(args[0])
 			if err != nil {
+				unlock()
 				return err
 			}
 			id := ids[0]
 			path := filepath.Join(app.Dir, id+".md")
 			orig, err := os.ReadFile(path)
+			unlock()
 			if err != nil {
 				return err
 			}
@@ -64,6 +74,19 @@ func newEditCmd(app *App) *cobra.Command {
 			}
 			if err := tk.Validate(); err != nil {
 				return fmt.Errorf("edited ticket is invalid, nothing saved: %w", err)
+			}
+			unlock, err = app.Lock(true)
+			if err != nil {
+				return err
+			}
+			defer unlock()
+			// Reload and make sure nobody changed the ticket while the editor
+			// was open; saving over their change would silently lose it.
+			if err := t.Reload(); err != nil {
+				return err
+			}
+			if cur, err := os.ReadFile(path); err != nil || !bytes.Equal(cur, orig) {
+				return fmt.Errorf("%s changed while editing, nothing saved", id)
 			}
 			if err := t.Replace(tk); err != nil {
 				return err

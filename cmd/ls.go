@@ -15,9 +15,10 @@ func init() { register(newLsCmd) }
 func newLsCmd(app *App) *cobra.Command {
 	var all bool
 	c := &cobra.Command{
-		Use:   "ls [id]",
-		Short: "Show the ticket tree as an outline with positions",
-		Args:  cobra.MaximumNArgs(1),
+		Use:         "ls [id]",
+		Annotations: map[string]string{lockAnnotation: lockShared},
+		Short:       "Show the ticket tree as an outline with positions",
+		Args:        cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := app.LoadTree()
 			if err != nil {

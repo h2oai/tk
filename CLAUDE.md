@@ -83,6 +83,8 @@ go run main.go [command]   # run without building
 
 ### Key Design Patterns
 
+**Locking**: `internal/store/lock.go` provides `Store.Lock(exclusive)`, an advisory `flock` on `.tickets/.lock` (unix; no-op on Windows) that waits 5s. `cmd/helpers.go` `lockCommand` wraps every command's `RunE` so the lock spans load to save: exclusive by default, shared for commands annotated `lockShared` (`ls`, `show`, `ready`, `fsck`), none for `lockNone` (`edit` and `tui` lock themselves). The TUI takes the lock per reorder and calls `Tree.Reload()` first so it never writes from a stale tree. New commands are exclusive by default.
+
 **Atomic updates**: mutating `Tree` methods run via `apply()`, which changes the in-memory state, persists only dirty tickets and `ROOT.md` through the store (each write is temp file + rename), and reloads from disk on any failure to roll back.
 
 **Thin commands**: `cmd/` only parses flags, resolves ids and prints; all rules live in `internal/tree`.

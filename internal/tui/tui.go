@@ -27,18 +27,24 @@ type Model struct {
 	top    int // first visible row
 	height int // terminal height, 0 until known
 	status string
+	lock   Locker
 }
 
-// New returns a model showing t.
-func New(t *tree.Tree) *Model {
-	m := &Model{t: t}
+// Locker takes the store lock and returns its release function.
+type Locker func() (unlock func(), err error)
+
+// New returns a model showing t. Each reorder takes lock (if non-nil), reloads
+// the tree from disk and then applies the change, so edits made by other tk
+// processes since the last key are neither lost nor overwritten.
+func New(t *tree.Tree, lock Locker) *Model {
+	m := &Model{t: t, lock: lock}
 	m.rebuild()
 	return m
 }
 
 // Run starts the program on the terminal and blocks until it quits.
-func Run(t *tree.Tree) error {
-	_, err := tea.NewProgram(New(t), tea.WithAltScreen()).Run()
+func Run(t *tree.Tree, lock Locker) error {
+	_, err := tea.NewProgram(New(t, lock), tea.WithAltScreen()).Run()
 	return err
 }
 
@@ -73,6 +79,24 @@ func (m *Model) mutate(op func(*tree.Tree, string) error) {
 	id := m.selected()
 	if id == "" {
 		return
+	}
+	if m.lock != nil {
+		unlock, err := m.lock()
+		if err != nil {
+			m.status = err.Error()
+			return
+		}
+		defer unlock()
+		if err := m.t.Reload(); err != nil {
+			m.status = err.Error()
+			return
+		}
+		m.rebuild()
+		m.follow(id)
+		if m.t.Get(id) == nil {
+			m.status = id + " no longer exists"
+			return
+		}
 	}
 	if err := op(m.t, id); err != nil {
 		m.status = err.Error()

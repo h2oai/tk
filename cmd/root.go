@@ -43,7 +43,9 @@ func newRootCmd() *cobra.Command {
 	}
 	root.PersistentFlags().StringVar(&app.Dir, "dir", DefaultDir, "tickets directory")
 	for _, b := range builders {
-		root.AddCommand(b(app))
+		c := b(app)
+		app.lockCommand(c)
+		root.AddCommand(c)
 	}
 	return root
 }

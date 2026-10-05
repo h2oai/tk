@@ -33,7 +33,7 @@ func newModel(t *testing.T, lines ...string) (*Model, *store.Store) {
 			t.Fatal(err)
 		}
 	}
-	return New(tr), st
+	return New(tr, nil), st
 }
 
 func press(m *Model, keys ...string) {
@@ -64,7 +64,7 @@ func reload(t *testing.T, st *store.Store) *Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(tr)
+	return New(tr, nil)
 }
 
 func TestCursorMovement(t *testing.T) {
@@ -158,7 +158,7 @@ func TestErrorInStatusLine(t *testing.T) {
 	if err := tr.AddDep("b", "a"); err != nil {
 		t.Fatal(err)
 	}
-	m := New(tr)
+	m := New(tr, nil)
 	press(m, "j", "L") // b under its blocker a breaks the dependency rule
 	if m.status == "" || !strings.Contains(m.View(), m.status) {
 		t.Errorf("status %q not shown", m.status)
@@ -179,5 +179,42 @@ func TestQuit(t *testing.T) {
 		if _, cmd := m.Update(k); cmd == nil {
 			t.Errorf("%v did not quit", k)
 		}
+	}
+}
+
+func TestReorderReloadsAndLocks(t *testing.T) {
+	m, st := newModel(t, "a -", "b -", "c -")
+	locks, unlocks := 0, 0
+	m.lock = func() (func(), error) {
+		locks++
+		return func() { unlocks++ }, nil
+	}
+	// Another process appends d and removes nothing; the model has not seen it.
+	other, err := tree.Load(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &store.Ticket{ID: "d", Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: "T d"}
+	if err := other.Add(d, "", tree.Place{}); err != nil {
+		t.Fatal(err)
+	}
+	press(m, "J") // a down
+	if got := order(m); got != "b a c d" {
+		t.Errorf("after stale reorder: %s", got)
+	}
+	if got := order(reload(t, st)); got != "b a c d" {
+		t.Errorf("disk lost the other process's ticket: %s", got)
+	}
+	if locks != 1 || unlocks != 1 {
+		t.Errorf("locks %d unlocks %d", locks, unlocks)
+	}
+	// The selected ticket is deleted elsewhere: report it, change nothing.
+	other, _ = tree.Load(st)
+	if _, err := other.Remove("a", false); err != nil {
+		t.Fatal(err)
+	}
+	press(m, "J")
+	if !strings.Contains(m.status, "no longer exists") {
+		t.Errorf("status %q", m.status)
 	}
 }

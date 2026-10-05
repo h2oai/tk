@@ -11,9 +11,10 @@ func init() { register(newReadyCmd) }
 
 func newReadyCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "ready [epic]",
-		Short: "Print the highest ready leaf (exit 0 found, 1 nothing left, 2 blocked)",
-		Args:  cobra.MaximumNArgs(1),
+		Use:         "ready [epic]",
+		Annotations: map[string]string{lockAnnotation: lockShared},
+		Short:       "Print the highest ready leaf (exit 0 found, 1 nothing left, 2 blocked)",
+		Args:        cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := app.LoadTree()
 			if err != nil {

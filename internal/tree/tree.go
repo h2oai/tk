@@ -55,6 +55,10 @@ func Load(st *store.Store) (*Tree, error) {
 	return t, nil
 }
 
+// Reload discards the in-memory state and re-reads everything from disk, for
+// callers that hold the store lock and may be looking at stale data.
+func (t *Tree) Reload() error { return t.reload() }
+
 func (t *Tree) reload() error {
 	ids, err := t.st.IDs()
 	if err != nil {

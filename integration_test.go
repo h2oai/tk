@@ -139,3 +139,37 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("fsck = %q", out)
 	}
 }
+
+// TestConcurrentWriters runs many `tk new` processes at once; without the
+// store lock they overwrite each other's ROOT.md and tickets go missing.
+func TestConcurrentWriters(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "tk")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	dir := t.TempDir()
+	const n = 30
+	errs := make(chan string, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			out, e, code := tkRun(t, bin, dir, "new", "t")
+			if code != 0 {
+				errs <- out + e
+				return
+			}
+			errs <- ""
+		}()
+	}
+	for i := 0; i < n; i++ {
+		if e := <-errs; e != "" {
+			t.Fatalf("tk new failed: %s", e)
+		}
+	}
+	out, _, _ := tkRun(t, bin, dir, "ls")
+	if got := len(strings.Split(out, "\n")); got != n {
+		t.Fatalf("ls shows %d tickets, want %d:\n%s", got, n, out)
+	}
+	if out, _, code := tkRun(t, bin, dir, "fsck"); code != 0 {
+		t.Fatalf("fsck: %s", out)
+	}
+}

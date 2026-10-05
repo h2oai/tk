@@ -9,15 +9,17 @@ func init() { register(newTuiCmd) }
 
 func newTuiCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "tui",
-		Short: "Reorder tickets interactively (reorder only; no content edits)",
-		Args:  cobra.NoArgs,
+		Use:         "tui",
+		Annotations: map[string]string{lockAnnotation: lockNone},
+		Short:       "Reorder tickets interactively (reorder only; no content edits)",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := app.LoadTree()
 			if err != nil {
 				return err
 			}
-			return tui.Run(t)
+			// The TUI is long-lived, so it locks per keypress, not per session.
+			return tui.Run(t, func() (func(), error) { return app.Lock(true) })
 		},
 	}
 }

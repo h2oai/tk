@@ -35,9 +35,10 @@ func newRmCmd(app *App) *cobra.Command {
 
 func newFsckCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "fsck",
-		Short: "Verify the integrity of the tickets directory (exit 1 on problems)",
-		Args:  cobra.NoArgs,
+		Use:         "fsck",
+		Annotations: map[string]string{lockAnnotation: lockShared},
+		Short:       "Verify the integrity of the tickets directory (exit 1 on problems)",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := app.LoadTree()
 			if err != nil {

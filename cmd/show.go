@@ -11,9 +11,10 @@ func init() { register(newShowCmd) }
 
 func newShowCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <id>",
-		Short: "Show a ticket in full",
-		Args:  cobra.ExactArgs(1),
+		Use:         "show <id>",
+		Annotations: map[string]string{lockAnnotation: lockShared},
+		Short:       "Show a ticket in full",
+		Args:        cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, ids, err := app.LoadResolved(args[0])
 			if err != nil {
