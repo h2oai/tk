@@ -1,130 +1,68 @@
 # Ticket Management with tk
 
-This project uses **tk** for ticket tracking. Tickets are stored as markdown files with YAML frontmatter in the `.tickets/` directory.
+This project uses **tk** for ticket tracking. Tickets are markdown files in `.tickets/`. They form an ordered tree; `tk ready` returns the next leaf to work on. Ticket state is the source of truth for progress.
 
-## Quick Reference
+## Workflow
 
 ```bash
-tk ready              # Find available work (no blockers)
-tk ready <epic-id>    # Find the next available work inside an epic
-tk chain <epic-id> <id> <id> ...   # Sequence epic children so one is ready at a time
-tk show <id>          # View ticket details
-tk start <id>         # Claim work (set status to in_progress)
-tk close <id>         # Complete work (set status to closed)
-tk ls --status=open   # List all open tickets
+tk ready              # next ticket: "<id> <position> <title>"
+tk show <id>          # read it (partial ids work)
+tk start <id>         # claim it (in_progress)
+tk note <id> "..."    # record progress / decisions
+tk close <id>         # finish, then run tk ready again
 ```
 
-## Essential Commands
+`tk ready <epic-id>` limits the search to one epic's subtree.
 
-### Finding Work
+### Exit codes of `tk ready`
 
-- `tk ready` - Show open/in-progress tickets with all dependencies resolved (sorted by priority ascending, 0=highest)
-- `tk ready --sort date` - Same, sorted by creation date (newest first)
-- `tk show <id>` - Detailed ticket view with metadata and relationships
-- `tk start <id>` - Set status to in_progress (claim work)
-- `tk ls` - List all tickets
-- `tk ls --status=open` - All open tickets
-- `tk ls --status=in_progress` - Your active work
-- `tk ls --status=closed` - Recently closed tickets
-- `tk blocked` - Show open/in-progress tickets with unresolved dependencies
-- `tk dep tree <id>` - Show dependency tree (deduplicates by default)
-- `tk dep tree --full <id>` - Show full tree (all occurrences, no deduplication)
+- `0`: a ticket was printed; work on it.
+- `1`: nothing left to do.
+- `2`: the top leaf is blocked. The output names the blocker (`blocked: A "..." waits on B "..." (pos, status)`). Do not skip ahead. Either work on the blocker (`tk start <blocker>`; it may be elsewhere in the tree), or, if the dependency is wrong, remove it with `tk undep <id> <blocker>`, or reorder with `tk mv`.
 
-### Creating & Updating
+### Building a hierarchy
 
-- `tk new "Ticket title"` - Create a new ticket (defaults to status: open, type: task, priority: 2)
-  - `--type=bug|feature|task|epic|chore` - Ticket type
-  - `-p, --priority 0-4` - Priority (0=critical, 2=medium, 4=backlog)
-  - `-b, --body "..."` - Body text, stored verbatim (`-b -` reads stdin)
-  - `-F, --file <path>` - Read body from a file
-  - `-a, --assignee username` - Assign to someone
-  - `--parent <id>` - Parent ticket ID
-  - `--external-ref "..."` - External reference (e.g., gh-123)
-- `tk close <id>` - Set status to closed (mark complete)
-- `tk reopen <id>` - Set status to open
-- `tk note <id> "..."` - Append timestamped note to ticket (`-` reads stdin, `-F <path>` reads a file)
-- `tk dep <id> <dependency-id>` - Add dependency (first ticket depends on second)
-- `tk chain <epic-id> <ticket-id>...` - Make each ticket a child of the epic and chain them sequentially (ticket[i] depends on ticket[i-1]) so `tk ready <epic-id>` yields exactly one runnable ticket at a time. Idempotent: re-running adds nothing.
-- `tk undep <id> <dependency-id>` - Remove dependency
-- `tk link <hub-id> <id> [id...]` - Create symmetric links (bidirectional). By default the first ticket is the hub, linked to each of the rest (a star); the remaining tickets are not linked to each other
-- `tk link --all-pairs <id> <id> [id...]` - Link every pair of the supplied tickets (full mesh)
-- `tk unlink <id> <target-id>` - Remove the symmetric link between two tickets
-
-### Querying & Filtering
-- `tk query` - Output all tickets as JSON, one per line
-- `tk query '.priority == "0"'` - Query with jq-style filters
-- `tk query '.status == "open"'` - Find open tickets
-- `tk query '.type == "bug"'` - Find bugs
-- `tk query -` / `tk query -F filter.jq` - Read the filter from stdin / a file
-
-### Passing Free-Form Text
-
-`tk new` (body), `tk note` (note) and `tk query` (filter) all take text **inline**, from **stdin** with `-`, or from a **file** with `-F/--file <path>`. For anything containing backticks, `$`, quotes, backslashes or newlines, use a quoted heredoc; nothing inside it needs escaping:
+An epic is just a ticket with children. Children are picked up in order.
 
 ```bash
-tk new "Fix parser" -b - <<'EOF'
-Handle `code spans`, $VARS, "quotes" and \backslashes.
-
-## Acceptance Criteria
-
-- Parser accepts all of the above.
+epic=$(tk new "Rewrite parser")               # prints the new id
+tk new "Tokenizer" --under "$epic"
+tk new "Parser" --under "$epic" -b - <<'EOF'
+Body text with `code`, $VARS and "quotes".
 EOF
-
-tk note <id> - <<'EOF'
-Root cause is `parse()` at L42 -- see $HOME handling.
-EOF
-
-tk query - <<'EOF'
-.status == "open" and .priority == "0"
-EOF
+tk new "Urgent fix" --under "$epic" --at 1    # insert first
+tk ls                                         # outline with positions
 ```
 
-One trailing newline is trimmed, so heredoc, `printf` and file input store identical text. Stdin is read only when `-` is given. Write `## Design` / `## Acceptance Criteria` sections directly in the body.
+### Reordering
 
-### Maintenance
-- `tk prune` - Dry-run: show dangling references (refs to deleted tickets)
-- `tk prune --fix` - Actually remove dangling references from deps, links, and parent fields
-  - Use case: After manually deleting ticket files (e.g., `rm .tickets/fanir7.md`)
-  - Ensures store consistency by cleaning up orphaned references
+Order decides what `tk ready` returns. Positions shown by `tk ls` are display only; always pass ids.
 
-## Common Workflows
-
-### Starting work:
 ```bash
-tk ready              # Find available work
-tk ready <epic-id>    # Next available work inside an epic
-tk chain <epic> <id> <id> ...   # Chain epic children into a sequential queue
-tk show <id>          # Review ticket details
-tk start <id>         # Claim it
+tk up <id>; tk down <id>; tk top <id>; tk bottom <id>
+tk mv <id> --before <other>                   # or --after <other>, --at N
+tk mv <id> --under <parent> [--at N]          # reparent; --root for top level
 ```
 
-### Completing work:
+### Dependencies
+
 ```bash
-tk close <id>         # Mark complete (can provide full or partial ID)
+tk dep <id> <blocker>     # <id> waits until <blocker> is closed
+tk undep <id> <blocker>
 ```
 
-### Creating dependent tickets:
-```bash
-# Capture the generated IDs and reuse them
-feature=$(tk new "Implement feature X" --type=feature)
-test=$(tk new "Write tests for X" --type=task --parent="$feature")
-tk dep "$test" "$feature"  # tests depend on feature
-```
+Descendants inherit an ancestor's blockers. Cycles and ancestor/descendant deps are rejected.
 
-### Working with blocked tickets:
-```bash
-tk blocked            # See what's blocking progress
-tk show <id>          # View dependencies preventing work
-tk close <blocker-id> # Close the blocking ticket
-```
+### Other
 
-## 🚨 CRITICAL 🚨
+- `tk close <epic> --force` closes an epic and all its descendants; plain `close` fails while any descendant is unclosed.
+- Adding a child to a closed or in_progress ticket resets it to open (it is now an epic).
+- `tk rm <id>` refuses if it has children or blocks others; `--force` deletes the subtree.
+- `tk reopen <id>` sets a ticket back to open. `tk fsck` checks integrity.
+- Free-form text (body, notes) can be given inline, via `-` (stdin) or `-F file`. Use a quoted heredoc for anything with backticks, `$` or quotes.
 
-- **File issues for remaining work** - Create tickets with `tk new` for anything that needs follow-up
-  - Create tickets for tracking strategic and/or discovered work (multi-session, dependencies, discovered work)
-- **Update ticket status** - Use `tk start <id>` when starting work, and close finished work with `tk close <id>`
-  - `tk start` MUST be used when starting work on a ticket
-  - Work is NOT complete until tickets are properly closed
-  - NEVER leave work in ambiguous state (e.g., started but unclear if done)
-  - Ticket state is the source of truth for project progress
+## Rules
 
+- File tickets (`tk new`) for follow-up or discovered work before you finish.
+- Always `tk start` before working and `tk close` when done; never leave work in an ambiguous state.
+- Use `tk note` to leave context for the next session.
