@@ -37,6 +37,9 @@ func newLsCmd(app *App) *cobra.Command {
 					writeOutline(w, t, id, 0, all)
 				}
 			}
+			if n := len(t.Orphans()); n > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "%d unreachable ticket(s); run `tk fsck`\n", n)
+			}
 			return nil
 		},
 	}

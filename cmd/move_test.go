@@ -194,6 +194,13 @@ func TestFsck(t *testing.T) {
 	contains(t, out, "dangling: "+a)
 	contains(t, out, "zzzzz9")
 	contains(t, out, "orphan: orphn1")
+	contains(t, out, "tk mv orphn1 --root")
+
+	_, errOut, _, err := e.runIn("", "ls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	contains(t, errOut, "1 unreachable ticket(s)")
 }
 
 func (e *env) store() *store.Store { return newApp(e.dir).Store() }

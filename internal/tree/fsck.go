@@ -71,10 +71,8 @@ func (t *Tree) Fsck() []Problem {
 			out = append(out, Problem{KindDuplicate, id, fmt.Sprintf("listed %d times (%s)", len(o), strings.Join(names, ", ")), nil})
 		}
 	}
-	for _, id := range ids {
-		if _, ok := t.pos[id]; !ok {
-			out = append(out, Problem{KindOrphan, id, "not reachable from ROOT", nil})
-		}
+	for _, id := range t.Orphans() {
+		out = append(out, Problem{KindOrphan, id, "not reachable from ROOT (re-attach with: tk mv " + id + " --root)", nil})
 	}
 	out = append(out, t.depProblems()...)
 	for _, id := range ids {

@@ -138,6 +138,17 @@ func (t *Tree) Resolve(partial string) (string, error) {
 // Roots returns the ordered root ids.
 func (t *Tree) Roots() []string { return slices.Clone(t.roots) }
 
+// Orphans returns the ids of tickets not reachable from ROOT, sorted.
+func (t *Tree) Orphans() []string {
+	var out []string
+	for _, id := range t.sortedIDs() {
+		if _, ok := t.pos[id]; !ok {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // Order returns all reachable ticket ids in DFS preorder.
 func (t *Tree) Order() []string { return slices.Clone(t.order) }
 
