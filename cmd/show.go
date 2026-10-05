@@ -44,7 +44,7 @@ func newShowCmd(app *App) *cobra.Command {
 			if kids := t.Children(id); len(kids) > 0 {
 				b.WriteString("children:\n")
 				for _, c := range kids {
-					fmt.Fprintf(&b, "  %s %s %s  %s\n", t.Position(c), marker(t.Get(c).Status), c, t.Get(c).Title)
+					fmt.Fprintf(&b, "  %s %s %s  %s\n", t.Position(c), t.Get(c).Status.Marker(), c, t.Get(c).Title)
 				}
 			}
 			if body := strings.TrimSpace(tk.Body); body != "" {

@@ -845,3 +845,54 @@ func TestSetType(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestIndentOutdent(t *testing.T) {
+	tests := []struct {
+		name string
+		op   func(*Tree, string) error
+		id   string
+		want string
+		err  error
+	}{
+		{"indent under previous", (*Tree).Indent, "a2", "a\n a1\n  a2\n   a2x\nb\nc\n c1\n", nil},
+		{"indent root appends", (*Tree).Indent, "b", "a\n a1\n a2\n  a2x\n b\nc\n c1\n", nil},
+		{"indent first is no-op", (*Tree).Indent, "a1", "a\n a1\n a2\n  a2x\nb\nc\n c1\n", nil},
+		{"indent first root is no-op", (*Tree).Indent, "a", "a\n a1\n a2\n  a2x\nb\nc\n c1\n", nil},
+		{"outdent to after parent", (*Tree).Outdent, "a1", "a\n a2\n  a2x\na1\nb\nc\n c1\n", nil},
+		{"outdent nested", (*Tree).Outdent, "a2x", "a\n a1\n a2\n a2x\nb\nc\n c1\n", nil},
+		{"outdent root is no-op", (*Tree).Outdent, "b", "a\n a1\n a2\n  a2x\nb\nc\n c1\n", nil},
+		{"indent missing", (*Tree).Indent, "zz", "", store.ErrNotFound},
+		{"outdent missing", (*Tree).Outdent, "zz", "", store.ErrNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr, st := build(t, sample)
+			if err := tt.op(tr, tt.id); !errors.Is(err, tt.err) {
+				t.Fatalf("err = %v, want %v", err, tt.err)
+			}
+			if tt.err != nil {
+				return
+			}
+			if got := outline(tr); got != tt.want {
+				t.Errorf("memory:\n%s\nwant:\n%s", got, tt.want)
+			}
+			if got := outline(reloaded(t, st)); got != tt.want {
+				t.Errorf("disk:\n%s\nwant:\n%s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIndentRechecksDeps(t *testing.T) {
+	tr, st := build(t, "a\nb\n")
+	if err := tr.AddDep("b", "a"); err != nil {
+		t.Fatal(err)
+	}
+	// indenting b under a would make b depend on its own ancestor
+	if err := tr.Indent("b"); err == nil {
+		t.Fatal("expected dep rule error")
+	}
+	if got := outline(reloaded(t, st)); got != "a\nb\n" {
+		t.Errorf("failed indent changed disk:\n%s", got)
+	}
+}

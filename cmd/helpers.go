@@ -49,17 +49,6 @@ func (a *App) LoadResolved(partials ...string) (*tree.Tree, []string, error) {
 // now returns the current UTC time truncated to seconds.
 func now() time.Time { return time.Now().UTC().Truncate(time.Second) }
 
-// marker is the status glyph used by ls and show.
-func marker(s store.Status) string {
-	switch s {
-	case store.StatusClosed:
-		return "[x]"
-	case store.StatusInProgress:
-		return "[~]"
-	}
-	return "[ ]"
-}
-
 // placeFromFlags builds a Place from --at/--before/--after, resolving anchors.
 func placeFromFlags(t *tree.Tree, at int, before, after string) (tree.Place, error) {
 	place := tree.Place{Index: at}

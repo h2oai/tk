@@ -27,6 +27,7 @@ go run main.go [command]   # run without building
 ./tk dep <id> <blocker> / undep ...     # blocked-by management
 ./tk rm <id> [--force]
 ./tk fsck                               # integrity check
+./tk tui                                # interactive reorder (j/k, J/K, H/L, g/G, q)
 ```
 
 ## Architecture
@@ -61,6 +62,7 @@ go run main.go [command]   # run without building
 - `move.go`: `mv`, `up`, `down`, `top`, `bottom`
 - `dep.go`: `dep`, `undep`
 - `rm.go`, fsck command
+- `tui.go`: `tui` (loads the tree and starts `internal/tui`)
 - `textinput.go`: free-form text contract (inline, `-` for stdin, `-F` file)
 
 **`internal/store/`**: file persistence only.
@@ -73,9 +75,11 @@ go run main.go [command]   # run without building
 - `tree.go`: ordering, positions, ancestors/descendants, id resolution, `apply`/`commit`
 - `ready.go`: ready selection and block description
 - `status.go`: start/close/reopen rules
-- `mutate.go`: add, move, up/down/top/bottom, remove
+- `mutate.go`: add, move, up/down/top/bottom, indent/outdent, remove
 - `dep.go`: dependency validation and add/remove
 - `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations)
+
+**`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. It never edits ticket contents (no create, delete, retitle, status, type or dep changes). Tests drive `Model.Update` in-process.
 
 ### Key Design Patterns
 

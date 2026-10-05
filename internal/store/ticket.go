@@ -26,6 +26,17 @@ func (s Status) Valid() bool {
 	return false
 }
 
+// Marker is the glyph shown for s in outlines.
+func (s Status) Marker() string {
+	switch s {
+	case StatusClosed:
+		return "[x]"
+	case StatusInProgress:
+		return "[~]"
+	}
+	return "[ ]"
+}
+
 // ParseStatus converts a string to a Status, rejecting unknown values.
 func ParseStatus(s string) (Status, error) {
 	st := Status(s)

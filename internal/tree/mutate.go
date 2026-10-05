@@ -182,6 +182,34 @@ func (t *Tree) shift(id string, target func(i, n int) int) error {
 	return t.Move(id, parent, Place{Index: to + 1})
 }
 
+// Indent makes id the last child of its previous sibling. It is a no-op when
+// id is the first of its siblings.
+func (t *Tree) Indent(id string) error {
+	if _, err := t.mustExist(id); err != nil {
+		return err
+	}
+	list := t.siblings(t.parent[id])
+	i := slices.Index(list, id)
+	for i--; i >= 0; i-- {
+		if t.tickets[list[i]] != nil {
+			return t.Move(id, list[i], Place{})
+		}
+	}
+	return nil
+}
+
+// Outdent makes id the next sibling of its parent. It is a no-op for a root.
+func (t *Tree) Outdent(id string) error {
+	if _, err := t.mustExist(id); err != nil {
+		return err
+	}
+	parent := t.parent[id]
+	if parent == "" {
+		return nil
+	}
+	return t.Move(id, t.parent[parent], Place{After: parent})
+}
+
 // Remove deletes id. Without force it refuses when id has children or blocks
 // another ticket (ErrHasChildren, ErrIsBlocker). With force it deletes the
 // whole subtree and detaches it from other tickets' blocked-by.

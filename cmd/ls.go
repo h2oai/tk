@@ -59,7 +59,7 @@ func allClosed(t *tree.Tree, id string) bool {
 
 func writeOutline(w io.Writer, t *tree.Tree, id string, depth int, all bool) {
 	tk := t.Get(id)
-	line := fmt.Sprintf("%s%s %s %s  %s", strings.Repeat("  ", depth), t.Position(id), marker(tk.Status), id, titleWithType(tk))
+	line := fmt.Sprintf("%s%s %s %s  %s", strings.Repeat("  ", depth), t.Position(id), tk.Status.Marker(), id, titleWithType(tk))
 	if open := openBlockers(t, tk); len(open) > 0 {
 		line += "  <- " + strings.Join(open, ", ")
 	}
