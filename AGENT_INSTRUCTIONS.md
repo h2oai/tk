@@ -1,74 +1,39 @@
-# Ticket Management with tk
+# Tickets with tk
 
-This project uses **tk** for ticket tracking. Tickets are markdown files in `.tickets/`. They form an ordered tree; `tk ready` returns the next leaf to work on. Ticket state is the source of truth for progress.
-
-## Workflow
+Tickets live in `.tickets/` as an ordered tree; `tk ready` returns the next leaf. Ids may be partial.
 
 ```bash
-tk ready              # next ticket: "<id> <position> [<type>] <title>"
-tk show <id>          # read it (partial ids work)
-tk start <id>         # claim it (in_progress)
-tk note <id> "..."    # record progress / decisions
-tk close <id>         # finish, then run tk ready again
+tk ready [epic]                  # next: "<id> <pos> [<type>] <title>"
+tk show <id>                     # read it
+tk start <id>                    # claim (in_progress)
+tk note <id> "..."               # record progress / decisions
+tk close <id>                    # finish, then tk ready again
+tk new "Title" [--type bug|feature|chore] [--under P] [--at N]   # prints id
+tk ls [--all] [id]               # outline with positions
+tk dep <id> <blocker> / undep <id> <blocker>   # blocked-by
+tk mv <id> --before|--after <o> / --under P [--at N] / --root; up/down/top/bottom
 ```
 
-`tk ready <epic-id>` limits the search to one epic's subtree.
-
-### Exit codes
-
-Any `tk` error (unknown id, missing directory, refused operation, unreadable tickets) exits `3`, never `1`. `tk fsck` exits `1` when it finds problems. For `tk ready`:
-
-- `0`: a ticket was printed; work on it.
-- `1`: nothing left to do.
-- `2`: the top leaf is blocked. The output names the blocker (`blocked: A "..." waits on B "..." (pos, status)`). Do not skip ahead. Either work on the blocker (`tk start <blocker>`; it may be elsewhere in the tree), or, if the dependency is wrong, remove it with `tk undep <id> <blocker>`, or reorder with `tk mv`.
-
-### Building a hierarchy
-
-An epic is just a ticket with children. Children are picked up in order.
+Epic = ticket with children, worked in order:
 
 ```bash
-epic=$(tk new "Rewrite parser")               # prints the new id
+epic=$(tk new "Rewrite parser")
 tk new "Tokenizer" --under "$epic"
 tk new "Parser" --under "$epic" -b - <<'EOF'
-Body text with `code`, $VARS and "quotes".
+Body with `code`, $VARS and "quotes".
 EOF
-tk new "Urgent fix" --under "$epic" --at 1    # insert first
-tk new "Crash on empty input" --type bug     # task (default), bug, feature or chore
-tk ls                                         # outline with positions
 ```
 
-### Reordering
+## Gotchas
 
-Order decides what `tk ready` returns. Positions shown by `tk ls` are display only; always pass ids.
-
-```bash
-tk up <id>; tk down <id>; tk top <id>; tk bottom <id>
-tk mv <id> --before <other>                   # or --after <other>, --at N
-tk mv <id> --under <parent> [--at N]          # reparent; --root for top level
-```
-
-### Dependencies
-
-```bash
-tk dep <id> <blocker>     # <id> waits until <blocker> is closed
-tk undep <id> <blocker>   # fails (exit 3) if <blocker> is not a current blocker
-```
-
-Descendants inherit an ancestor's blockers. Cycles and ancestor/descendant deps are rejected.
-
-### Other
-
-- `tk close <epic> --force` closes an epic and all its descendants; plain `close` fails while any descendant is unclosed.
-- Adding a child to a closed or in_progress ticket resets it to open (it is now an epic). So does starting, reopening or moving unclosed work under it.
-- If a ticket file or `ROOT.md` is unreadable (e.g. an unknown frontmatter key), `tk` refuses to modify anything until `tk fsck` is clean; fix the file by hand.
-- `tk rm <id>` refuses if it has children or blocks others; `--force` deletes the subtree.
-- `tk type <id> <task|bug|feature|chore>` changes the type; it is metadata only and never affects `tk ready`, order or dependencies.
-- `tk ls [--all] [id]` prints the outline (`--all` includes closed subtrees). `tk tui` is an interactive reorder UI for humans; do not run it.
-- `tk reopen <id>` sets a ticket back to open. `tk fsck` checks integrity.
-- Free-form text (body, notes) can be given inline, via `-` (stdin) or `-F file`. Use a quoted heredoc for anything with backticks, `$` or quotes.
+- `tk ready` exits `0` ticket printed, `1` nothing left, `2` top leaf blocked, `3` error (any other `tk` error too). `fsck` exits `1` on problems.
+- On `2`, don't skip ahead: `tk start` the named blocker, or fix with `tk undep` / `tk mv`.
+- Text (body, notes): inline, `-` for stdin, or `-F file`. Use a quoted heredoc for backticks, `$` or quotes.
+- `close <epic>` fails while descendants are open; `--force` closes them all.
+- Never run `tk tui` (human-only). Positions are display only; pass ids.
 
 ## Rules
 
-- File tickets (`tk new`) for follow-up or discovered work before you finish.
-- Always `tk start` before working and `tk close` when done; never leave work in an ambiguous state.
-- Use `tk note` to leave context for the next session.
+- `tk start` before working, `tk close` when done.
+- `tk new` follow-up or discovered work before you finish.
+- `tk note` context for the next session.
