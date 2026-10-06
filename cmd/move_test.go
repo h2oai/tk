@@ -204,3 +204,47 @@ func TestFsck(t *testing.T) {
 }
 
 func (e *env) store() *store.Store { return newApp(e.dir).Store() }
+
+func TestMvWarnsAboveBlocker(t *testing.T) {
+	e := newEnv(t)
+	a, b, c := e.newT("A"), e.newT("B"), e.newT("C")
+	e.run("dep", a, b) // A waits on B, A is above B
+	_, errs, _, _ := e.runIn("", "mv", c, "--at", "1")
+	if errs != "" {
+		t.Errorf("unrelated move warned: %q", errs)
+	}
+	e.run("mv", a, "--after", b)
+	_, errs, _, _ = e.runIn("", "mv", a, "--before", b)
+	contains(t, errs, "warning: "+a+` "A"`)
+	contains(t, errs, "is above its blocker "+b)
+	_, errs, _, _ = e.runIn("", "down", c)
+	if errs != "" {
+		t.Errorf("preexisting misorder warned: %q", errs)
+	}
+	// moving the blocker below its dependent
+	e.run("mv", a, "--after", b)
+	_, errs, _, _ = e.runIn("", "bottom", b)
+	contains(t, errs, "is above its blocker "+b)
+	// closed blockers never warn
+	e.run("close", b)
+	_, errs, _, _ = e.runIn("", "top", a)
+	if errs != "" {
+		t.Errorf("closed blocker warned: %q", errs)
+	}
+}
+
+func TestDepAndFsckWarnMisorder(t *testing.T) {
+	e := newEnv(t)
+	a, b := e.newT("A"), e.newT("B")
+	_, errs, _, _ := e.runIn("", "dep", a, b)
+	contains(t, errs, "is above its blocker "+b)
+	out, _, code, err := e.runIn("", "fsck")
+	if err != nil || code != 0 {
+		t.Fatalf("fsck code %d err %v", code, err)
+	}
+	contains(t, out, "warn: "+a)
+	e.run("mv", b, "--before", a)
+	if out := e.run("fsck"); strings.TrimSpace(out) != "ok" {
+		t.Errorf("fsck: %q", out)
+	}
+}

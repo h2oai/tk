@@ -72,7 +72,7 @@ Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] 
 ## Dependencies (`blocked-by`)
 
 - `blocked-by` is a list of ticket ids, on any ticket. A blocker is satisfied only when it is `closed`. Epics may be blockers (satisfied once closed manually).
-- Dependencies **may disagree with order**. That is the situation `ready` exit code 2 reports.
+- Dependencies **may disagree with order**. That is the situation `ready` exit code 2 reports. `tk dep` and the move commands (`mv`, `up`, `down`, `top`, `bottom`) warn on stderr (`warning: <id> "<title>" (<pos>) is above its blocker ...`) when they newly create such a pair involving the changed ticket or its descendants; the change still succeeds. `tk fsck` lists every current pair as a `warn:` line without affecting its exit code. Closed tickets and closed blockers never warn.
 - Rejected by `tk dep` and re-checked by `tk mv`:
   - cycles, counting both `blocked-by` edges and parent links
   - a dep between a ticket and its own ancestor or descendant (it could never be satisfied)
@@ -95,7 +95,7 @@ Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] 
 | `tk tui` | Interactive reorder: `j/k` move the cursor, `J/K` down/up among siblings, `H/L` outdent/indent, `g/G` top/bottom among siblings, `q` quit. Changes apply immediately through the same checks as `tk mv`; errors show in the status line. Reorder only: it never edits ticket contents. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage `blocked-by`. |
 | `tk rm <id>` | Refuses if the ticket has children or is anyone's blocker. `--force` deletes the subtree and detaches deps. |
-| `tk fsck` | Verify integrity: orphans, ticket in two parents, dangling ids, cycles, dep rule violations. Orphan lines hint at the repair: `tk mv <id> --root` (or `--under`) re-attaches the ticket with its subtree. |
+| `tk fsck` | Verify integrity: orphans, ticket in two parents, dangling ids, cycles, dep rule violations (exit 1), plus `warn:` lines for tickets above their unclosed blockers (exit unaffected). Orphan lines hint at the repair: `tk mv <id> --root` (or `--under`) re-attaches the ticket with its subtree. |
 
 Addressing is by id only (partial matching). Positional paths are never accepted as arguments, because they shift on reorder.
 

@@ -46,7 +46,7 @@ go run main.go [command]   # run without building
 
 **Status rules** (`internal/tree/status.go`): leaves hold real status. `start` fails on a non-leaf with unclosed descendants. `close` on a non-leaf fails while any descendant is unclosed; `--force` closes all descendants. Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`; start/reopen/add/move of unclosed work also resets closed and `in_progress` ancestors (`fsck` flags an `in_progress` or `closed` ticket with unclosed descendants). Mutations (`Tree.apply`) refuse with `ErrCorrupt` while any ticket or `ROOT.md` failed to load; ticket frontmatter is parsed strictly, so unknown keys make the ticket unreadable instead of being dropped on save. `undep` fails unless the blocker is currently listed (an exact dangling id is allowed). `rm` refuses if the ticket has children or is anyone's blocker; `--force` deletes the subtree and detaches deps.
 
-**Dependencies** (`internal/tree/dep.go`): rejected when they form a cycle (counting `blocked-by` edges and parent links), or link a ticket with its own ancestor or descendant. `mv` re-checks these.
+**Dependencies** (`internal/tree/dep.go`): rejected when they form a cycle (counting `blocked-by` edges and parent links), or link a ticket with its own ancestor or descendant. `mv` re-checks these. Tickets above an unclosed blocker are not errors: `internal/tree/order.go` (`Misorders`, `MisordersSince`) feeds stderr warnings from `dep`/`mv`/`up`/`down`/`top`/`bottom` and `warn:` lines in `fsck` (which keeps exit 0 for them).
 
 ### Package Structure
 

@@ -19,10 +19,12 @@ func init() {
 				if err != nil {
 					return err
 				}
+				before := t.Misorders()
 				if err := t.AddDep(ids[0], ids[1]); err != nil {
 					return err
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "%s now waits on %s\n", ids[0], ids[1])
+				warnMisorders(cmd, t, ids[0], before)
 				return nil
 			},
 		}

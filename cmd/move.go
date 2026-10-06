@@ -27,6 +27,13 @@ func printPlace(cmd *cobra.Command, t *tree.Tree, id string) {
 	fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s\n", id, t.Position(id), t.Get(id).Title)
 }
 
+// warnMisorders prints, on stderr, the blocker misorders a change to id created.
+func warnMisorders(cmd *cobra.Command, t *tree.Tree, id string, before []tree.Misorder) {
+	for _, m := range t.MisordersSince(before, id) {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", m)
+	}
+}
+
 func newMvCmd(app *App) *cobra.Command {
 	var under, before, after string
 	var at int
@@ -71,10 +78,12 @@ without any position the ticket is appended last.`,
 			default:
 				parent = t.Parent(id)
 			}
+			before := t.Misorders()
 			if err := t.Move(id, parent, place); err != nil {
 				return err
 			}
 			printPlace(cmd, t, id)
+			warnMisorders(cmd, t, id, before)
 			return nil
 		},
 	}
@@ -96,10 +105,12 @@ func newShiftCmd(app *App, name, short string, do func(*tree.Tree, string) error
 			if err != nil {
 				return err
 			}
+			before := t.Misorders()
 			if err := do(t, ids[0]); err != nil {
 				return err
 			}
 			printPlace(cmd, t, ids[0])
+			warnMisorders(cmd, t, ids[0], before)
 			return nil
 		},
 	}

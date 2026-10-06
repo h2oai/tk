@@ -37,7 +37,7 @@ func newFsckCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:         "fsck",
 		Annotations: map[string]string{lockAnnotation: lockShared},
-		Short:       "Verify the integrity of the tickets directory (exit 1 on problems)",
+		Short:       "Verify the integrity of the tickets directory (exit 1 on problems; blocker misorders are warnings)",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := app.LoadTree()
@@ -45,15 +45,22 @@ func newFsckCmd(app *App) *cobra.Command {
 				return err
 			}
 			problems := t.Fsck()
+			warnings := t.Misorders()
 			w := cmd.OutOrStdout()
-			if len(problems) == 0 {
+			if len(problems) == 0 && len(warnings) == 0 {
 				fmt.Fprintln(w, "ok")
 				return nil
 			}
 			for _, p := range problems {
 				fmt.Fprintln(w, p)
 			}
-			return &ExitError{Code: ExitFsck}
+			for _, m := range warnings {
+				fmt.Fprintf(w, "warn: %s\n", m)
+			}
+			if len(problems) > 0 {
+				return &ExitError{Code: ExitFsck}
+			}
+			return nil
 		},
 	}
 }
