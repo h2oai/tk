@@ -81,7 +81,7 @@ For example:
 
 ## Interactive reordering
 
-`tk tui` opens a keyboard UI for reordering the tree: `j`/`k` move the cursor, `J`/`K` move a ticket down/up among its siblings, `H`/`L` outdent/indent, `g`/`G` move it first/last among its siblings, and `q` quits. Every change is applied immediately through the same checks as `tk mv`, and errors appear in the status line. The TUI reorders only; it never edits ticket contents.
+`tk tui` opens a keyboard UI for reordering the tree: `j`/`k` move the cursor, `J`/`K` move a ticket down/up among its siblings, `H`/`L` outdent/indent, `g`/`G` move it first/last among its siblings, `Enter` opens the selected ticket in a read-only detail view (`j`/`k` scroll, `g`/`G` top/bottom, `Esc` or `q` back), and `q` quits. Every change is applied immediately through the same checks as `tk mv`, and errors appear in the status line. The TUI reorders and displays tickets; it never edits ticket contents.
 
 ## Ticket readiness
 
@@ -126,7 +126,7 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>] <title>`), `1` n
 | `tk ready [epic]` | Highest ready leaf; exit 0/1/2 (3 on error). |
 | `tk mv <id> [--under P \| --root] [--at N \| --before X \| --after X]` | Reparent and/or reposition. |
 | `tk up` / `down` / `top` / `bottom <id>` | Move among siblings. |
-| `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `q` quit. Reorder only; never edits contents. |
+| `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `Enter` view ticket (`Esc` back), `q` quit. Never edits contents. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. `undep` fails (exit 3) if the blocker is not currently listed. |
 | `tk rm <id> [--force]` | Refuses if the ticket has children or blocks others; `--force` deletes the subtree and detaches deps. |
 | `tk fsck` | Verify integrity (orphans, duplicate parents, dangling ids, cycles, dep rule violations); exit 1 on problems, including unreadable tickets (unknown frontmatter keys, corrupt `ROOT.md`). Every command that modifies tickets refuses to run while any ticket or `ROOT.md` is unreadable. |

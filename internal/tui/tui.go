@@ -1,6 +1,7 @@
 // Package tui is a Bubble Tea interface for reordering tickets. It holds no
 // ordering rules: every change goes through tree.Tree, and the view is rebuilt
-// from the tree afterwards. It never edits ticket contents.
+// from the tree afterwards. It can show a ticket read-only but never edits
+// ticket contents.
 package tui
 
 import (
@@ -11,7 +12,7 @@ import (
 	"github.com/h2oai/tk/internal/tree"
 )
 
-const help = "j/k move  J/K reorder  H/L outdent/indent  g/G top/bottom  q quit"
+const help = "j/k move  J/K reorder  H/L outdent/indent  g/G top/bottom  enter open  q quit"
 
 // row is one line of the outline.
 type row struct {
@@ -26,12 +27,18 @@ type Model struct {
 	cursor int
 	top    int // first visible row
 	height int // terminal height, 0 until known
-	status string
-	lock   Locker
+	width  int // terminal width, 0 until known
+
+	detailID string   // ticket shown in the detail view, "" for the list
+	detail   []string // rendered lines of the detail view
+	scroll   int      // first visible line of the detail view
+	status   string
+	lock     Locker
 }
 
-// Locker takes the store lock and returns its release function.
-type Locker func() (unlock func(), err error)
+// Locker takes the store lock (exclusive or shared) and returns its release
+// function.
+type Locker func(exclusive bool) (unlock func(), err error)
 
 // New returns a model showing t. Each reorder takes lock (if non-nil), reloads
 // the tree from disk and then applies the change, so edits made by other tk
@@ -81,7 +88,7 @@ func (m *Model) mutate(op func(*tree.Tree, string) error) {
 		return
 	}
 	if m.lock != nil {
-		unlock, err := m.lock()
+		unlock, err := m.lock(true)
 		if err != nil {
 			m.status = err.Error()
 			return
@@ -114,8 +121,18 @@ func (m *Model) Init() tea.Cmd { return nil }
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.height = msg.Height
+		m.height, m.width = msg.Height, msg.Width
+		if m.detailID != "" {
+			m.detail = renderDetail(m.t, m.detailID, m.width)
+			m.scrollBy(0)
+		}
 	case tea.KeyMsg:
+		if m.detailID != "" {
+			if m.updateDetailKey(msg.String()) {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -123,6 +140,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = min(m.cursor+1, len(m.rows)-1)
 		case "k", "up":
 			m.cursor = max(m.cursor-1, 0)
+		case "enter":
+			m.open()
 		case "J":
 			m.mutate((*tree.Tree).Down)
 		case "K":
@@ -142,6 +161,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 func (m *Model) View() string {
+	if m.detailID != "" {
+		return m.detailView()
+	}
 	var b strings.Builder
 	n := len(m.rows)
 	if m.height > 3 {

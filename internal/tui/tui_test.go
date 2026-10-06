@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -185,7 +186,7 @@ func TestQuit(t *testing.T) {
 func TestReorderReloadsAndLocks(t *testing.T) {
 	m, st := newModel(t, "a -", "b -", "c -")
 	locks, unlocks := 0, 0
-	m.lock = func() (func(), error) {
+	m.lock = func(bool) (func(), error) {
 		locks++
 		return func() { unlocks++ }, nil
 	}
@@ -218,3 +219,74 @@ func TestReorderReloadsAndLocks(t *testing.T) {
 		t.Errorf("status %q", m.status)
 	}
 }
+
+func key(m *Model, t tea.KeyType) { m.Update(tea.KeyMsg{Type: t}) }
+
+func TestEnterOpensDetailAndEscReturns(t *testing.T) {
+	m, _ := newModel(t, "aaa - ", "bbb - ")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	press(m, "j")
+	key(m, tea.KeyEnter)
+	if m.detailID != "bbb" {
+		t.Fatalf("detailID = %q, want bbb", m.detailID)
+	}
+	if v := stripANSI(m.View()); !strings.Contains(v, "T bbb") || !strings.Contains(v, "esc back") {
+		t.Errorf("detail view missing title/help:\n%s", v)
+	}
+	press(m, "J") // reorder keys are ignored in the detail view
+	if order(m) != "aaa bbb" {
+		t.Errorf("order changed in detail view: %s", order(m))
+	}
+	key(m, tea.KeyEsc)
+	if m.detailID != "" || m.cursor != 1 {
+		t.Errorf("after esc: detailID=%q cursor=%d", m.detailID, m.cursor)
+	}
+	key(m, tea.KeyEnter)
+	press(m, "q")
+	if m.detailID != "" {
+		t.Error("q should close the detail view")
+	}
+}
+
+func TestDetailScrollAndQuit(t *testing.T) {
+	m, _ := newModel(t, "aaa - ")
+	m.t.Get("aaa").Body = strings.Repeat("line\n\n", 40)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 10})
+	key(m, tea.KeyEnter)
+	press(m, "j")
+	if m.scroll != 1 {
+		t.Errorf("scroll = %d, want 1", m.scroll)
+	}
+	press(m, "G")
+	if m.scroll != len(m.detail)-m.pageSize() {
+		t.Errorf("G scroll = %d", m.scroll)
+	}
+	press(m, "g")
+	if m.scroll != 0 {
+		t.Errorf("g scroll = %d", m.scroll)
+	}
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC}); cmd == nil {
+		t.Error("ctrl+c should quit from the detail view")
+	}
+}
+
+func TestEnterOnEmptyListAndVanishedTicket(t *testing.T) {
+	m, _ := newModel(t)
+	key(m, tea.KeyEnter)
+	if m.detailID != "" {
+		t.Error("enter on empty list opened a detail view")
+	}
+	m, st := newModel(t, "aaa - ")
+	m.lock = func(bool) (func(), error) { return func() {}, nil }
+	if err := st.Delete("aaa"); err != nil {
+		t.Fatal(err)
+	}
+	key(m, tea.KeyEnter)
+	if m.detailID != "" || m.status == "" {
+		t.Errorf("vanished ticket: detailID=%q status=%q", m.detailID, m.status)
+	}
+}
+
+var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string { return ansi.ReplaceAllString(s, "") }
