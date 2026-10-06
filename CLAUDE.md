@@ -79,7 +79,7 @@ go run main.go [command]   # run without building
 - `dep.go`: dependency validation and add/remove
 - `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations)
 
-**`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`detail.go`: its own markdown formatter rendered with glamour, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. It never edits ticket contents (no create, delete, retitle, status, type or dep changes). Tests drive `Model.Update` in-process.
+**`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: its own markdown formatter rendered with glamour, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. It never edits ticket contents (no create, delete, retitle, status, type or dep changes). Tests drive `Model.Update` in-process.
 
 ### Key Design Patterns
 

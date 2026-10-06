@@ -45,6 +45,10 @@ func press(m *Model, keys ...string) {
 			msg = tea.KeyMsg{Type: tea.KeyDown}
 		case "up":
 			msg = tea.KeyMsg{Type: tea.KeyUp}
+		case "left":
+			msg = tea.KeyMsg{Type: tea.KeyLeft}
+		case "right":
+			msg = tea.KeyMsg{Type: tea.KeyRight}
 		}
 		m.Update(msg)
 	}
@@ -233,7 +237,7 @@ func TestEnterOpensDetailAndEscReturns(t *testing.T) {
 	if v := stripANSI(m.View()); !strings.Contains(v, "T bbb") || !strings.Contains(v, "esc back") {
 		t.Errorf("detail view missing title/help:\n%s", v)
 	}
-	press(m, "J") // reorder keys are ignored in the detail view
+	press(m, "H", "L") // reorder keys are ignored in the detail view
 	if order(m) != "aaa bbb" {
 		t.Errorf("order changed in detail view: %s", order(m))
 	}
@@ -245,6 +249,52 @@ func TestEnterOpensDetailAndEscReturns(t *testing.T) {
 	press(m, "q")
 	if m.detailID != "" {
 		t.Error("q should close the detail view")
+	}
+}
+
+func TestDetailStepsBetweenTickets(t *testing.T) {
+	m, _ := newModel(t, "aaa - ", "bbb aaa", "ccc - ")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	key(m, tea.KeyEnter)
+	press(m, "K")
+	if m.detailID != "aaa" || m.status != "first ticket" {
+		t.Errorf("K at top: detailID=%q status=%q", m.detailID, m.status)
+	}
+	press(m, "J")
+	if m.detailID != "bbb" || m.status != "" || m.scroll != 0 {
+		t.Errorf("J: detailID=%q status=%q", m.detailID, m.status)
+	}
+	press(m, "right")
+	if m.detailID != "ccc" {
+		t.Errorf("right: detailID=%q", m.detailID)
+	}
+	press(m, "J")
+	if m.detailID != "ccc" || m.status != "last ticket" {
+		t.Errorf("J at bottom: detailID=%q status=%q", m.detailID, m.status)
+	}
+	press(m, "left")
+	if m.detailID != "bbb" {
+		t.Errorf("left: detailID=%q", m.detailID)
+	}
+	if order(m) != "aaa -bbb ccc" {
+		t.Errorf("order changed: %s", order(m))
+	}
+	key(m, tea.KeyEsc)
+	if m.detailID != "" || m.cursor != 1 {
+		t.Errorf("after esc: detailID=%q cursor=%d", m.detailID, m.cursor)
+	}
+}
+
+func TestDetailStepWhenTicketVanished(t *testing.T) {
+	m, st := newModel(t, "aaa - ", "bbb - ")
+	m.lock = func(bool) (func(), error) { return func() {}, nil }
+	key(m, tea.KeyEnter)
+	if err := st.Delete("aaa"); err != nil {
+		t.Fatal(err)
+	}
+	press(m, "J")
+	if m.detailID != "" || m.status == "" {
+		t.Errorf("vanished ticket: detailID=%q status=%q", m.detailID, m.status)
 	}
 }
 
