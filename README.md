@@ -2,7 +2,7 @@
 
 `tk` is a minimal ticket tracker for long-horizon AI agent tasks, built around one idea: **tickets form an ordered tree, and `tk ready` returns the highest leaf.** You create a hierarchy and reorder it; `tk` tells you what to do next.
 
-Tickets are plain markdown files with YAML frontmatter in `.tickets/`. There is no database, daemon or TUI. Browse them with `grep`/`rg`, `less`, or your editor. `tk` started as a Go port of the [ticket](https://github.com/wedow/ticket) bash script.
+Tickets are plain markdown files with YAML frontmatter in `.tickets/`. There is no database or daemon. Browse them with `grep`/`rg`, `less`, or your editor.
 
 ## Concepts
 
@@ -41,6 +41,10 @@ tk ready               # -> next leaf
 
 Reorder with `tk mv`, `tk up`, `tk down`, `tk top`, `tk bottom`; the next `tk ready` follows the new order.
 
+### Interactive reordering
+
+`tk tui` opens a keyboard UI for reordering the tree: `j`/`k` move the cursor, `J`/`K` move a ticket down/up among its siblings, `H`/`L` outdent/indent, `g`/`G` move it first/last among its siblings, and `q` quits. Every change is applied immediately through the same checks as `tk mv`, and errors appear in the status line. The TUI reorders only; it never edits ticket contents.
+
 ## `tk ready`
 
 1. If any leaf is `in_progress`, take the first one in DFS order (resume work).
@@ -54,14 +58,14 @@ If the chosen ticket (or any ancestor) waits on an unclosed blocker, `ready` sto
 blocked: fanir7 "Add parser" waits on lovet2 "Pick schema" (2.4.1, open)
 ```
 
-Exit codes: `0` a ticket was printed (`<id> <position> <title>`), `1` nothing left to do, `2` the top leaf is blocked. Fix a block by closing the blocker, `tk undep`, or reordering.
+Exit codes: `0` a ticket was printed (`<id> <position> [<type>] <title>`), `1` nothing left to do, `2` the top leaf is blocked. Fix a block by closing the blocker, `tk undep`, or reordering.
 
 **Exit codes of every command**: `0` success, `1` `ready`: nothing left to do (also `fsck`: problems found), `2` `ready`: top leaf blocked, `3` any other error (unknown or ambiguous id, missing directory, refused operation, usage error, unreadable tickets). Only `0`, `1` and `2` from `ready` carry meaning; treat `3` as a failure, never as "done".
 
 ## Status rules
 
 - `close` on a ticket with unclosed descendants fails; `tk close --force` closes all descendants too.
-- Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`. Starting, reopening, adding or moving unclosed work under an `in_progress` or `closed` ancestor resets those ancestors to `open` too; `tk fsck` reports an `in_progress` ticket with unclosed descendants.
+- Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`. Starting, reopening, adding or moving unclosed work under an `in_progress` or `closed` ancestor resets those ancestors to `open` too; `tk fsck` reports an `in_progress` or `closed` ticket with unclosed descendants.
 - A childless placeholder container shows up in `ready`; give it children or move it to the bottom.
 
 ## Dependencies
@@ -72,15 +76,17 @@ Exit codes: `0` a ticket was printed (`<id> <position> <title>`), `1` nothing le
 
 | Command | Behaviour |
 |---|---|
-| `tk new <title> [--under P] [--at N \| --before X \| --after X] [-b body \| -b - \| -F file]` | Create a ticket, print its id. Default: last child of `P`, or last root. |
-| `tk ls [--all] [id]` | Outline with positions (e.g. `2.1.3`). Closed subtrees hidden unless `--all`. |
-| `tk show <id>` | Title, body, status, blockers, children, position. |
+| `tk new <title> [--type T] [--under P] [--at N \| --before X \| --after X] [-b body \| -b - \| -F file]` | Create a ticket, print its id. `--type` is `task` (default), `bug`, `feature` or `chore`. Default: last child of `P`, or last root. |
+| `tk ls [--all] [id]` | Outline with positions (e.g. `2.1.3`) and each ticket's `[type]`. Closed subtrees hidden unless `--all`. |
+| `tk show <id>` | Title, body, status, type, blockers, children, position. |
+| `tk type <id> <task\|bug\|feature\|chore>` | Set the ticket's type. |
 | `tk edit <id>` | Open in `$EDITOR`. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id> [--force]` / `tk reopen <id>` | Status transitions. |
 | `tk ready [epic]` | Highest ready leaf; exit 0/1/2 (3 on error). |
 | `tk mv <id> [--under P \| --root] [--at N \| --before X \| --after X]` | Reparent and/or reposition. |
 | `tk up` / `down` / `top` / `bottom <id>` | Move among siblings. |
+| `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `q` quit. Reorder only; never edits contents. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. `undep` fails (exit 3) if the blocker is not currently listed. |
 | `tk rm <id> [--force]` | Refuses if the ticket has children or blocks others; `--force` deletes the subtree and detaches deps. |
 | `tk fsck` | Verify integrity (orphans, duplicate parents, dangling ids, cycles, dep rule violations); exit 1 on problems, including unreadable tickets (unknown frontmatter keys, corrupt `ROOT.md`). Every command that modifies tickets refuses to run while any ticket or `ROOT.md` is unreadable. |
@@ -99,6 +105,7 @@ Ids are matched by substring (exact match first; error on zero or multiple match
 ---
 id: fanir7
 status: open
+type: task
 blocked-by: [lovet2]
 children: [kamop3, ritus9]
 created: 2026-10-05T12:00:00Z
@@ -115,6 +122,7 @@ Body text; notes are appended as timestamped sections.
 ```bash
 make build   # go build
 make test    # go test -race ./...
+make check   # fmt, vet, test
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the architecture and [docs/spec.md](docs/spec.md) for the full specification.
