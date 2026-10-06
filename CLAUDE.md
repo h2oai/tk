@@ -38,7 +38,7 @@ go run main.go [command]   # run without building
 
 **Order**: siblings are ordered by position in the parent's `children` list (roots by `ROOT.md`). Global order is DFS preorder over the roots. A leaf is a ticket with no children; an epic is any ticket that has children (not a type).
 
-**ID Generation**: `internal/store/id.go` generates short pronounceable ids (consonant-vowel-consonant-vowel-consonant plus a trailing digit, e.g. `fanir7`) using crypto/rand. No directory-derived prefix.
+**ID Generation**: `internal/store/id.go` generates short pronounceable ids (a CVCVC or VCVCV stem plus a trailing digit, e.g. `fanir7` or `igoro8`) using crypto/rand. No directory-derived prefix.
 
 **Partial ID Matching**: users pass full or partial ids; `Tree.Resolve()` tries an exact match, then substring match, and errors on zero or multiple matches. Positions like `1.2` are display only and are never accepted as arguments.
 
