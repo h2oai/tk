@@ -2,8 +2,6 @@
 
 A minimal ticket tracker built around one idea: **tickets form an ordered tree, and `tk ready` returns the highest leaf.** All the user does is create a hierarchy and reorder it.
 
-This replaces the current codebase (including `chain`, `readytree`, `deptree`, priority, type, links, gojq `query`). Old code and the 11 existing tickets are dropped; the rewrite happens in place in this repo.
-
 ## Concepts
 
 - **Ticket**: a unit of work with a title, body, status, type and optional blockers. The type (`task|bug|feature|chore`, default `task`) is pure metadata: it never affects `ready`, status rules, ordering or deps. `epic` is not a type.
@@ -109,7 +107,5 @@ Free-form text input contract: inline, stdin with `-`, or file with `-F`.
 
 ## Implementation notes
 
-- Language and libraries: Go, `spf13/cobra`, `gopkg.in/yaml.v3`. Drop `itchyny/gojq`.
-- Delete `cmd/` and `internal/` wholesale and rebuild; update `README.md`, `CLAUDE.md` and `AGENT_INSTRUCTIONS.md` to match.
-- Packages (suggested): `internal/store` (load/save, ID resolution, atomic writes), `internal/tree` (DFS, ready, dep validation, mv), `cmd/` (thin cobra commands).
-- Work is currently on branch `simplify` - make all commits to this branch.
+- Language and libraries: Go, `spf13/cobra`, `gopkg.in/yaml.v3`.
+- Packages: `internal/store` (load/save, ID resolution, atomic writes), `internal/tree` (DFS, ready, dep validation, mv), `cmd/` (thin cobra commands).
