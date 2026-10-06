@@ -1,8 +1,8 @@
 # tk
 
-`tk` is a minimal ticket tracker for long-horizon AI agent tasks, built around one idea: **tickets form an ordered tree, and `tk ready` returns the highest leaf.** You create a hierarchy and reorder it; `tk` tells you what to do next.
+`tk` is a minimal, local ticket tracker for long-horizon AI agent tasks. Tickets form an ordered tree, and the highest leaf is the ticket ready to be picked up next. You create a hierarchy and reorder it; the agent works the tree continuously, top to bottom.
 
-Tickets are plain markdown files with YAML frontmatter in `.tickets/`. There is no database or daemon. Browse them with `grep`/`rg`, `less`, or your editor.
+Tickets are plain markdown files with YAML frontmatter in `.tickets/`. There is no database or daemon, so you and your agent can edit or grep the files directly.
 
 ## Concepts
 
@@ -24,6 +24,17 @@ Make sure `$GOPATH/bin` (default `$HOME/go/bin`) is on your `PATH`.
 
 Append [AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md) to your `CLAUDE.md` or `AGENTS.md`.
 
+Use this prompt to kick off your agent, substituting your epic's id for `<epic-id>`:
+
+> Solve the child tickets of `<epic-id>` using subagents, sequentially. Have each
+> subagent ask you for clarification when it needs it (questions with options and
+> a recommendation), so you can relay them to me. If a subagent files new
+> tickets, stop and let me know so I can triage them.
+
+Then monitor the top-level agent and triage with `tk tui`.
+
+## Quick example
+
 ```bash
 epic=$(tk new "Rewrite parser")                     # fanir7
 tk new "Tokenizer" --under "$epic"                  # pivot3
@@ -41,11 +52,13 @@ tk ready               # -> next leaf
 
 Reorder with `tk mv`, `tk up`, `tk down`, `tk top`, `tk bottom`; the next `tk ready` follows the new order.
 
-### Interactive reordering
+## Interactive reordering
 
 `tk tui` opens a keyboard UI for reordering the tree: `j`/`k` move the cursor, `J`/`K` move a ticket down/up among its siblings, `H`/`L` outdent/indent, `g`/`G` move it first/last among its siblings, and `q` quits. Every change is applied immediately through the same checks as `tk mv`, and errors appear in the status line. The TUI reorders only; it never edits ticket contents.
 
-## `tk ready`
+## Ticket readiness
+
+`tk ready` finds the next available ticket to work on.
 
 1. If any leaf is `in_progress`, take the first one in DFS order (resume work).
 2. Otherwise take the first leaf in DFS order that is not closed. A non-leaf whose descendants are all closed counts as a leaf (a wrap-up task) until you close it.
