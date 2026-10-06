@@ -102,10 +102,144 @@ Free-form text input contract: inline, stdin with `-`, or file with `-F`.
 ## Non-goals
 
 - Claims or assignees for multiple workers: single worker assumed (concurrent writes are serialized by the lock, but `ready` does not reserve a ticket). Use `tk ready <epic>` to scope parallel streams by hand.
-- Priority, assignee, links, jq `query`, live `--watch` tree, `prune`, `clean`, archive.
+- Priority, assignee, links, jq `query`, live `--watch` tree, `prune`, `clean`.
 - Positional addressing and a single outline file.
+
+Archival is specified in [Appendix: Archival](#appendix-archival).
 
 ## Implementation notes
 
 - Language and libraries: Go, `spf13/cobra`, `gopkg.in/yaml.v3`.
 - Packages: `internal/store` (load/save, ID resolution, atomic writes), `internal/tree` (DFS, ready, dep validation, mv), `cmd/` (thin cobra commands).
+
+## Appendix: Archival
+
+Archiving is a reversible hiding state layered *on top of* status. It never changes
+a status: it only removes a ticket and its whole subtree from listings, selection
+and warnings, while keeping every file on disk so `unarchive` can restore it
+exactly where it was.
+
+### On-disk representation
+
+An archived ticket carries `archived: true` in its frontmatter. The key is omitted
+whenever it is false, so tickets written before this feature read as unarchived.
+
+```markdown
+---
+id: fanir7
+status: closed
+type: task
+archived: true
+blocked-by: [lovet2]
+children: [kamop3]
+created: 2026-10-05T12:00:00Z
+---
+# Title
+```
+
+Frontmatter parsing is strict, so an older `tk` binary rejects a ticket once it
+contains the unknown `archived` key. This is accepted: archival is a v2 feature and
+the tickets directory is expected to move as one.
+
+### Invariants
+
+- An archived ticket is always `closed`.
+- Every descendant of an archived ticket is archived.
+- The converse is allowed: an unarchived ticket may have archived children.
+
+`tk fsck` reports a new **`archive`** problem (exit 1) when either invariant is
+broken, i.e. an archived ticket whose status is not closed, or an archived ticket
+with any unarchived descendant. Blockers and deps that point at an archived ticket
+are not problems.
+
+### Commands
+
+| Command | Behaviour |
+|---|---|
+| `tk archive <id> [--force]` | Archive the ticket and its whole subtree. Requires every ticket in the subtree to be closed; `--force` closes the subtree first (as if by `close --force`). Fails while anything in the subtree is unclosed. |
+| `tk unarchive <id>` | Unarchive the ticket's subtree and every archived ancestor (required so the ticket is reachable again). Statuses are unchanged (they are already closed). A no-op on a ticket that is not archived. |
+
+- `archive` prints each affected ticket as `<id> archived "<title>"`; `unarchive`
+  prints `<id> unarchived "<title>"`.
+- `rm` may still permanently delete an archived ticket (`--force` for a subtree).
+  Every other mutating command — `start`, `close`, `reopen`, `note`, `edit`, `type`,
+  `dep`, `mv`, `up`, `down`, `top`, `bottom` — refuses an archived ticket.
+  `show` still reads one.
+- `new` or `mv` under an archived parent is refused, and so is `dep` when either the
+  holder or the blocker is archived. Unarchive first.
+- Partial-id resolution treats archived tickets like any other: a partial id may
+  resolve to an archived ticket, and the command then reports why it refuses.
+
+### Visibility
+
+- `ls`, `ready`, `tui`, `fsck`'s misorder warnings and the `dep`/`mv` warnings skip
+  archived tickets and their subtrees. `ready` never selects an archived ticket and
+  never stops on one.
+- `ls --archived` reveals archived subtrees; `ls --all` reveals closed-only
+  subtrees. Archived hiding dominates: an archived node appears only with
+  `--archived`, a non-archived but closed node only with `--all`, and a subtree that
+  is both needs both flags. Passing both shows everything.
+- `ls <archived-id>` shows the whole archived subtree, as if `--archived` were
+  scoped to it.
+- Archived lines use the `[a]` marker; `show` prints `archived: true`.
+
+### Positions
+
+Positions shown for the visible tree skip archived nodes, so `ls` shows no gaps.
+A parallel *raw* position — a DFS that counts every ticket, archived included — is
+used only when displaying an archived ticket, in `show`, `ls --archived` and
+`unarchive`. Positions shift when a ticket is archived or unarchived.
+
+### Blocking
+
+- An archived blocker counts as **satisfied**: a ticket that waits on it is no
+  longer blocked, and `ready` never reports it as an unclosed blocker.
+- An archived ticket's own `blocked-by` entries are ignored while it is archived.
+- Positions in `ready` and in blocker warnings are the visible ones.
+
+### Example
+
+```console
+$ tk ls
+1 [ ] rasot4 [task] Ship it
+
+$ tk new "Release 1.0"                    # fanir7
+fanir7
+$ tk new "Write docs" --under fanir7       # kamop3
+kamop3
+$ tk close fanir7 --force
+kamop3 closed "Write docs"
+fanir7 closed "Release 1.0"
+
+$ tk archive fanir7
+kamop3 archived "Write docs"
+fanir7 archived "Release 1.0"
+
+$ tk ls
+1 [ ] rasot4 [task] Ship it
+
+$ tk ls --archived
+1 [ ] rasot4 [task] Ship it
+2 [a] fanir7 [task] Release 1.0
+  2.1 [a] kamop3 [task] Write docs
+
+$ tk show kamop3
+# Write docs
+id:       kamop3
+status:   closed
+archived: true
+position: 2.1
+...
+
+$ tk start kamop3
+kamop3: archived
+
+$ tk unarchive kamop3
+kamop3 unarchived "Write docs"
+fanir7 unarchived "Release 1.0"
+
+$ tk ls --all
+1 [ ] rasot4 [task] Ship it
+2 [x] fanir7 [task] Release 1.0
+  2.1 [x] kamop3 [task] Write docs
+```
