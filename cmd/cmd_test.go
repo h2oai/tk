@@ -397,3 +397,41 @@ func TestArchive(t *testing.T) {
 	contains(t, errs, "not found")
 	contains(t, e.run("fsck"), "ok")
 }
+
+func TestArchiveAll(t *testing.T) {
+	e := newEnv(t)
+	done := e.newT("Done")
+	held := e.newT("Held")
+	waiter := e.newT("Waiter")
+	e.run("dep", waiter, held)
+	e.run("close", done)
+	e.run("close", held)
+
+	for _, args := range [][]string{{"archive", "--all", done}, {"archive", "--all", "--force"}, {"archive"}} {
+		if _, _, code := e.fail(args...); code != ExitGeneric {
+			t.Errorf("%v: code %d", args, code)
+		}
+	}
+
+	out, errs, _, err := e.runIn("", "archive", "--all", "-n")
+	if err != nil || out != done+" would archive \"Done\"\n" || errs != "skipped "+held+": blocks "+waiter+"\n" {
+		t.Errorf("dry run: %v\nout: %q\nerr: %q", err, out, errs)
+	}
+	if out := e.run("archive", done, "--dry-run"); out != done+" would archive \"Done\"\n" {
+		t.Errorf("single dry run: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(e.dir, "archive")); !os.IsNotExist(err) {
+		t.Errorf("dry run created archive dir: %v", err)
+	}
+
+	out, errs, _, err = e.runIn("", "archive", "--all")
+	if err != nil || out != done+" archived \"Done\"\n" || errs != "skipped "+held+": blocks "+waiter+"\n" {
+		t.Errorf("archive --all: %v\nout: %q\nerr: %q", err, out, errs)
+	}
+	if ls := e.run("ls", "--all"); strings.Contains(ls, done) || !strings.Contains(ls, held) {
+		t.Errorf("ls:\n%s", ls)
+	}
+	if out, errs, _, err = e.runIn("", "archive", "--all"); err != nil || out != "" {
+		t.Errorf("second run: %v %q %q", err, out, errs)
+	}
+}

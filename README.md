@@ -130,6 +130,7 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>] <title>`), `1` n
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. `undep` fails (exit 3) if the blocker is not currently listed. |
 | `tk rm <id> [--force]` | Refuses if the ticket has children or blocks others; `--force` deletes the subtree and detaches deps. |
 | `tk archive <id> [--force]` | Move a fully closed subtree into `.tickets/archive/` (`--force` closes it first). Refused while a `blocked-by` edge crosses the subtree boundary. One-way: no command reads the archive back. |
+| `tk archive --all` | Archive every fully closed subtree, skipping (and reporting on stderr) those still linked to live tickets by `blocked-by`. `-n`/`--dry-run` on either form prints what would move. |
 | `tk fsck` | Verify integrity (orphans, duplicate parents, dangling ids, cycles, dep rule violations); exit 1 on problems, including unreadable tickets (unknown frontmatter keys, corrupt `ROOT.md`). Every command that modifies tickets refuses to run while any ticket or `ROOT.md` is unreadable. |
 
 Ids are matched by substring (exact match first; error on zero or multiple matches). Positions such as `1.2` are display only and never accepted as arguments, because they shift on reorder. Free-form text (body, notes) can be given inline, on stdin with `-`, or from a file with `-F`. Use `--dir` to change the tickets directory (default `.tickets`).

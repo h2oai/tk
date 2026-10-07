@@ -282,8 +282,8 @@ func (t *Tree) touch(id string) {
 // all while any ticket or ROOT.md failed to load, so that an unreadable file
 // is never overwritten by a view that treats it as empty.
 func (t *Tree) apply(fn func() error) error {
-	if len(t.loadErr) > 0 {
-		return fmt.Errorf("%w (%s); refusing to modify, run `tk fsck`", ErrCorrupt, t.loadErr[0])
+	if err := t.writable(); err != nil {
+		return err
 	}
 	err := fn()
 	if err == nil {
@@ -298,6 +298,14 @@ func (t *Tree) apply(fn func() error) error {
 	}
 	t.dirty, t.rootsDirty, t.gone, t.archived = nil, false, nil, nil
 	t.reindex()
+	return nil
+}
+
+// writable reports ErrCorrupt while any ticket or ROOT.md failed to load.
+func (t *Tree) writable() error {
+	if len(t.loadErr) > 0 {
+		return fmt.Errorf("%w (%s); refusing to modify, run `tk fsck`", ErrCorrupt, t.loadErr[0])
+	}
 	return nil
 }
 

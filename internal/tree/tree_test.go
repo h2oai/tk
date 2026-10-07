@@ -921,7 +921,7 @@ func TestArchive(t *testing.T) {
 			t.Fatal(err)
 		}
 		before, _ := os.ReadFile(filepath.Join(st.Dir, "a2x.md"))
-		got, err := tr.Archive("a2", false)
+		got, err := tr.Archive("a2", false, false)
 		if err != nil || !reflect.DeepEqual(ids(got), []string{"a2", "a2y", "a2x"}) {
 			t.Fatalf("got %v, %v", ids(got), err)
 		}
@@ -945,7 +945,7 @@ func TestArchive(t *testing.T) {
 	})
 	t.Run("root", func(t *testing.T) {
 		tr, st := build(t, "a:closed\nb")
-		if _, err := tr.Archive("a", false); err != nil {
+		if _, err := tr.Archive("a", false, false); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(reloaded(t, st).Roots(), []string{"b"}) {
@@ -954,7 +954,7 @@ func TestArchive(t *testing.T) {
 	})
 	t.Run("refuses unclosed", func(t *testing.T) {
 		tr, st := build(t, "a:closed\n  a1\nb")
-		if _, err := tr.Archive("a", false); !errors.Is(err, ErrNotClosed) {
+		if _, err := tr.Archive("a", false, false); !errors.Is(err, ErrNotClosed) {
 			t.Errorf("err = %v", err)
 		}
 		if archived(t, st) != nil || outline(reloaded(t, st)) != "a\n a1\nb\n" {
@@ -963,7 +963,7 @@ func TestArchive(t *testing.T) {
 	})
 	t.Run("force closes first", func(t *testing.T) {
 		tr, st := build(t, "a\n  a1:in_progress\n  a2:closed\nb")
-		if _, err := tr.Archive("a", true); err != nil {
+		if _, err := tr.Archive("a", true, false); err != nil {
 			t.Fatal(err)
 		}
 		data, _ := os.ReadFile(filepath.Join(st.ArchiveDir(), "a1.md"))
@@ -982,7 +982,7 @@ func TestArchive(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, force := range []bool{false, true} {
-				if _, err := tr.Archive("a", force); !errors.Is(err, ErrCrossDep) {
+				if _, err := tr.Archive("a", force, false); !errors.Is(err, ErrCrossDep) {
 					t.Errorf("%v force=%v: err = %v", dep, force, err)
 				}
 			}
@@ -997,7 +997,7 @@ func TestArchive(t *testing.T) {
 			t.Fatal(err)
 		}
 		os.WriteFile(filepath.Join(st.ArchiveDir(), "a.md"), []byte("old"), 0o644)
-		if _, err := tr.Archive("a", false); err != nil {
+		if _, err := tr.Archive("a", false, false); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(archived(t, st), []string{"a-2.md", "a.md"}) {
@@ -1008,8 +1008,105 @@ func TestArchive(t *testing.T) {
 		tr, st := build(t, "a:closed\nb")
 		os.WriteFile(filepath.Join(st.Dir, "c.md"), []byte("garbage"), 0o644)
 		_ = tr.Reload()
-		if _, err := tr.Archive("a", false); !errors.Is(err, ErrCorrupt) {
+		if _, err := tr.Archive("a", false, false); !errors.Is(err, ErrCorrupt) {
 			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+func TestArchiveClosed(t *testing.T) {
+	ids := func(tks []*store.Ticket) []string {
+		var out []string
+		for _, tk := range tks {
+			out = append(out, tk.ID)
+		}
+		return out
+	}
+	t.Run("maximal closed subtrees", func(t *testing.T) {
+		tr, st := build(t, "a\n  a1:closed\n  a2:closed\n    a2x:closed\n  a3\nb:closed\n  b1:closed\nc")
+		got, skips, err := tr.ArchiveClosed(false)
+		if err != nil || skips != nil || !reflect.DeepEqual(ids(got), []string{"a1", "a2", "a2x", "b", "b1"}) {
+			t.Fatalf("got %v, %v, %v", ids(got), skips, err)
+		}
+		for _, r := range []*Tree{tr, reloaded(t, st)} {
+			if outline(r) != "a\n a3\nc\n" || len(r.Fsck()) != 0 {
+				t.Errorf("live:\n%s%v", outline(r), r.Fsck())
+			}
+		}
+		if _, err := os.Stat(filepath.Join(st.ArchiveDir(), "a2x.md")); err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("skips crossing deps, cascades and descends", func(t *testing.T) {
+		tr, st := build(t, "e:closed\n  e1:closed\n  e2:closed\nf:closed\ng\nh:closed")
+		for _, d := range [][2]string{{"g", "e1"}, {"h", "e1"}, {"f", "e2"}} {
+			if err := tr.AddDep(d[0], d[1]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, skips, err := tr.ArchiveClosed(false)
+		if err != nil || !reflect.DeepEqual(ids(got), []string{"e2", "f"}) {
+			t.Fatalf("got %v, %v", ids(got), err)
+		}
+		want := []Skip{{ID: "e1", Blocks: []string{"g", "h"}}, {ID: "h", WaitsOn: []string{"e1"}}}
+		if !reflect.DeepEqual(skips, want) {
+			t.Errorf("skips = %+v", skips)
+		}
+		if skips[0].String() != "blocks g, h" || skips[1].String() != "waits on e1" {
+			t.Errorf("strings = %q, %q", skips[0], skips[1])
+		}
+		if r := reloaded(t, st); outline(r) != "e\n e1\ng\nh\n" || len(r.Fsck()) != 0 {
+			t.Errorf("live:\n%s%v", outline(r), r.Fsck())
+		}
+	})
+	t.Run("open epic keeps its place", func(t *testing.T) {
+		tr, st := build(t, "a\n  a1:closed")
+		if _, _, err := tr.ArchiveClosed(false); err != nil {
+			t.Fatal(err)
+		}
+		if r := reloaded(t, st); outline(r) != "a\n" || r.Get("a").Status != store.StatusOpen {
+			t.Errorf("live:\n%s", outline(r))
+		}
+	})
+	t.Run("nothing to do", func(t *testing.T) {
+		tr, st := build(t, "a\n  a1")
+		got, skips, err := tr.ArchiveClosed(false)
+		if err != nil || len(got) != 0 || len(skips) != 0 {
+			t.Errorf("got %v, %v, %v", got, skips, err)
+		}
+		if _, err := os.Stat(st.ArchiveDir()); !os.IsNotExist(err) {
+			t.Errorf("archive dir: %v", err)
+		}
+	})
+	t.Run("dry run", func(t *testing.T) {
+		tr, st := build(t, "a:closed\nb\n  b1")
+		got, _, err := tr.ArchiveClosed(true)
+		if err != nil || !reflect.DeepEqual(ids(got), []string{"a"}) {
+			t.Fatalf("got %v, %v", ids(got), err)
+		}
+		got, err = tr.Archive("b", true, true)
+		if err != nil || !reflect.DeepEqual(ids(got), []string{"b", "b1"}) {
+			t.Fatalf("got %v, %v", ids(got), err)
+		}
+		r := reloaded(t, st)
+		if outline(r) != "a\nb\n b1\n" || r.Get("b1").Status != store.StatusOpen {
+			t.Errorf("dry run changed disk:\n%s", outline(r))
+		}
+		if _, err := os.Stat(st.ArchiveDir()); !os.IsNotExist(err) {
+			t.Errorf("archive dir: %v", err)
+		}
+		if _, err := tr.Archive("b", false, true); !errors.Is(err, ErrNotClosed) {
+			t.Errorf("dry run unclosed: %v", err)
+		}
+	})
+	t.Run("refuses corrupt tree", func(t *testing.T) {
+		tr, st := build(t, "a:closed")
+		os.WriteFile(filepath.Join(st.Dir, "c.md"), []byte("garbage"), 0o644)
+		_ = tr.Reload()
+		for _, dry := range []bool{false, true} {
+			if _, _, err := tr.ArchiveClosed(dry); !errors.Is(err, ErrCorrupt) {
+				t.Errorf("dry=%v: err = %v", dry, err)
+			}
 		}
 	})
 }

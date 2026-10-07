@@ -95,7 +95,8 @@ Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] 
 | `tk tui` | Interactive reorder: `j/k` move the cursor, `J/K` down/up among siblings, `H/L` outdent/indent, `g/G` top/bottom among siblings, `enter` open the selected ticket in a read-only, scrollable detail view rendered with glamour (`j/k`, `pgup/pgdn`, `g/G` scroll; `J/K` or `→/←` next/previous ticket in list order; `esc` or `q` back), `q` quit. Changes apply immediately through the same checks as `tk mv`; errors show in the status line. It never edits ticket contents. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage `blocked-by`. |
 | `tk rm <id>` | Refuses if the ticket has children or is anyone's blocker. `--force` deletes the subtree and detaches deps. |
-| `tk archive <id> [--force]` | Move the closed subtree into `.tickets/archive/` (see [Archival](#archival)). |
+| `tk archive <id> [--force] [-n]` | Move the closed subtree into `.tickets/archive/` (see [Archival](#archival)). |
+| `tk archive --all [-n]` | Move every fully closed subtree into `.tickets/archive/`, skipping those linked to live tickets (see [Archival](#archival)). |
 | `tk fsck` | Verify integrity: orphans, ticket in two parents, dangling ids, cycles, dep rule violations (exit 1), plus `warn:` lines for tickets above their unclosed blockers (exit unaffected). Orphan lines hint at the repair: `tk mv <id> --root` (or `--under`) re-attaches the ticket with its subtree. |
 
 Addressing is by id only (partial matching). Positional paths are never accepted as arguments, because they shift on reorder.
@@ -142,6 +143,29 @@ with `.tickets/archive/` by hand.
 - The move is best-effort: files are renamed and the live list rewritten without a
   journal, so a crash can leave a half-moved subtree. The live tree's normal `fsck`
   checks report the damage — a dangling child id or an orphaned file.
+
+`tk archive --all` archives every fully closed subtree in one batch, printing the
+same lines in DFS preorder. It takes no id, and `--force` is rejected with it.
+
+- The candidates are the **maximal** subtrees whose tickets are all closed: a closed
+  leaf under an epic that is still open is archived and the epic stays.
+- A `blocked-by` edge crosses only when its other end **stays live**; edges between
+  tickets archived in the same run move with them.
+- A candidate with a crossing edge is **skipped** instead of refusing the run: it
+  stays live, and so do its ancestors. Its closed siblings and their subtrees are
+  still archived. Skipping can make another candidate cross (it now waits on, or
+  blocks, a live ticket), so selection repeats until nothing changes.
+- Each skipped ticket that crosses gets one line on stderr, e.g.
+  `skipped <id>: waits on <id>, blocks <id>`. Ancestors kept only to hold a skipped
+  ticket are not reported. Skips do not fail the command: it exits 0.
+- With nothing to archive it prints nothing and exits 0.
+- The whole batch is one move: lists are rewritten once, then the files renamed,
+  with the same filename suffixing and best-effort guarantees as above.
+
+`-n` / `--dry-run`, with either form, runs the same checks and prints the same
+output with `would archive` in place of `archived`, but changes nothing: no
+ticket is closed (even with `--force`), moved or rewritten. A run that would be
+refused fails the same way.
 
 Every other command addresses the live tree only. Id resolution never scans
 `archive/`, there is no `archive:` prefix, and an id that lives only in the archive
