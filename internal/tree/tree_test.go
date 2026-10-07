@@ -3,6 +3,7 @@ package tree
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -895,4 +896,120 @@ func TestIndentRechecksDeps(t *testing.T) {
 	if got := outline(reloaded(t, st)); got != "a\nb\n" {
 		t.Errorf("failed indent changed disk:\n%s", got)
 	}
+}
+
+func TestArchive(t *testing.T) {
+	archived := func(t *testing.T, st *store.Store) []string {
+		t.Helper()
+		entries, _ := os.ReadDir(st.ArchiveDir())
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		return names
+	}
+	ids := func(tks []*store.Ticket) []string {
+		var out []string
+		for _, tk := range tks {
+			out = append(out, tk.ID)
+		}
+		return out
+	}
+	t.Run("closed subtree", func(t *testing.T) {
+		tr, st := build(t, "a\n  a1:closed\n  a2:closed\n    a2y:closed\n    a2x:closed\nb")
+		if err := tr.AddDep("a2x", "a2y"); err != nil { // internal edge moves along
+			t.Fatal(err)
+		}
+		before, _ := os.ReadFile(filepath.Join(st.Dir, "a2x.md"))
+		got, err := tr.Archive("a2", false)
+		if err != nil || !reflect.DeepEqual(ids(got), []string{"a2", "a2y", "a2x"}) {
+			t.Fatalf("got %v, %v", ids(got), err)
+		}
+		if !reflect.DeepEqual(archived(t, st), []string{"a2.md", "a2x.md", "a2y.md"}) {
+			t.Errorf("archive = %v", archived(t, st))
+		}
+		if after, _ := os.ReadFile(filepath.Join(st.ArchiveDir(), "a2x.md")); !reflect.DeepEqual(before, after) {
+			t.Errorf("a2x changed:\n%s\nvs\n%s", before, after)
+		}
+		for _, r := range []*Tree{tr, reloaded(t, st)} {
+			if outline(r) != "a\n a1\nb\n" || r.Get("a2") != nil {
+				t.Errorf("live tree:\n%s", outline(r))
+			}
+			if _, err := r.Resolve("a2"); !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("resolve archived: %v", err)
+			}
+			if p := r.Fsck(); len(p) != 0 {
+				t.Errorf("fsck: %v", p)
+			}
+		}
+	})
+	t.Run("root", func(t *testing.T) {
+		tr, st := build(t, "a:closed\nb")
+		if _, err := tr.Archive("a", false); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(reloaded(t, st).Roots(), []string{"b"}) {
+			t.Errorf("roots = %v", reloaded(t, st).Roots())
+		}
+	})
+	t.Run("refuses unclosed", func(t *testing.T) {
+		tr, st := build(t, "a:closed\n  a1\nb")
+		if _, err := tr.Archive("a", false); !errors.Is(err, ErrNotClosed) {
+			t.Errorf("err = %v", err)
+		}
+		if archived(t, st) != nil || outline(reloaded(t, st)) != "a\n a1\nb\n" {
+			t.Error("archive changed something")
+		}
+	})
+	t.Run("force closes first", func(t *testing.T) {
+		tr, st := build(t, "a\n  a1:in_progress\n  a2:closed\nb")
+		if _, err := tr.Archive("a", true); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := os.ReadFile(filepath.Join(st.ArchiveDir(), "a1.md"))
+		tk, err := store.Unmarshal(data)
+		if err != nil || tk.Status != store.StatusClosed {
+			t.Errorf("a1 = %+v, %v", tk, err)
+		}
+		if outline(reloaded(t, st)) != "b\n" {
+			t.Errorf("live:\n%s", outline(reloaded(t, st)))
+		}
+	})
+	t.Run("refuses crossing deps even with force", func(t *testing.T) {
+		for _, dep := range [][2]string{{"b", "a1"}, {"a1", "b"}} {
+			tr, st := build(t, "a:closed\n  a1:closed\nb:closed")
+			if err := tr.AddDep(dep[0], dep[1]); err != nil {
+				t.Fatal(err)
+			}
+			for _, force := range []bool{false, true} {
+				if _, err := tr.Archive("a", force); !errors.Is(err, ErrCrossDep) {
+					t.Errorf("%v force=%v: err = %v", dep, force, err)
+				}
+			}
+			if archived(t, st) != nil {
+				t.Error("archive dir created")
+			}
+		}
+	})
+	t.Run("collision suffix", func(t *testing.T) {
+		tr, st := build(t, "a:closed\nb")
+		if err := os.MkdirAll(st.ArchiveDir(), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(st.ArchiveDir(), "a.md"), []byte("old"), 0o644)
+		if _, err := tr.Archive("a", false); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(archived(t, st), []string{"a-2.md", "a.md"}) {
+			t.Errorf("archive = %v", archived(t, st))
+		}
+	})
+	t.Run("refuses corrupt tree", func(t *testing.T) {
+		tr, st := build(t, "a:closed\nb")
+		os.WriteFile(filepath.Join(st.Dir, "c.md"), []byte("garbage"), 0o644)
+		_ = tr.Reload()
+		if _, err := tr.Archive("a", false); !errors.Is(err, ErrCorrupt) {
+			t.Errorf("err = %v", err)
+		}
+	})
 }

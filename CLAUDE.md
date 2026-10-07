@@ -26,6 +26,7 @@ go run main.go [command]   # run without building
 ./tk mv <id> --under P --at N           # also --before/--after/--root; up/down/top/bottom
 ./tk dep <id> <blocker> / undep ...     # blocked-by management
 ./tk rm <id> [--force]
+./tk archive <id> [--force]             # move closed subtree to .tickets/archive/
 ./tk fsck                               # integrity check
 ./tk tui                                # interactive reorder + read-only detail view (enter/esc)
 ```
@@ -46,6 +47,8 @@ go run main.go [command]   # run without building
 
 **Status rules** (`internal/tree/status.go`): leaves hold real status. `start` fails on a non-leaf with unclosed descendants. `close` on a non-leaf fails while any descendant is unclosed; `--force` closes all descendants. Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`; start/reopen/add/move of unclosed work also resets closed and `in_progress` ancestors (`fsck` flags an `in_progress` or `closed` ticket with unclosed descendants). Mutations (`Tree.apply`) refuse with `ErrCorrupt` while any ticket or `ROOT.md` failed to load; ticket frontmatter is parsed strictly, so unknown keys make the ticket unreadable instead of being dropped on save. `undep` fails unless the blocker is currently listed (an exact dangling id is allowed). `rm` refuses if the ticket has children or is anyone's blocker; `--force` deletes the subtree and detaches deps.
 
+**Archival** (`internal/tree/archive.go`, `Store.Archive`): `archive` moves a subtree into `.tickets/archive/` (flat, no `ROOT.md`, created lazily), one-way. Every member must be closed (`--force` closes first); refused, even with `--force`, while a `blocked-by` edge links a member with a live ticket. Live lists drop every reference; files are renamed byte for byte, taking `<id>-N.md` on name collisions. `commit` rewrites lists before renaming, so a crash leaves orphans for `fsck`. Nothing else reads `archive/` (`Store.IDs` skips directories).
+
 **Dependencies** (`internal/tree/dep.go`): rejected when they form a cycle (counting `blocked-by` edges and parent links), or link a ticket with its own ancestor or descendant. `mv` re-checks these. Tickets above an unclosed blocker are not errors: `internal/tree/order.go` (`Misorders`, `MisordersSince`) feeds stderr warnings from `dep`/`mv`/`up`/`down`/`top`/`bottom` and `warn:` lines in `fsck` (which keeps exit 0 for them).
 
 ### Package Structure
@@ -62,6 +65,7 @@ go run main.go [command]   # run without building
 - `move.go`: `mv`, `up`, `down`, `top`, `bottom`
 - `dep.go`: `dep`, `undep`
 - `rm.go`, fsck command
+- `archive.go`: `archive`
 - `tui.go`: `tui` (loads the tree and starts `internal/tui`)
 - `textinput.go`: free-form text contract (inline, `-` for stdin, `-F` file)
 
@@ -77,6 +81,7 @@ go run main.go [command]   # run without building
 - `status.go`: start/close/reopen rules
 - `mutate.go`: add, move, up/down/top/bottom, indent/outdent, remove
 - `dep.go`: dependency validation and add/remove
+- `archive.go`: move a closed subtree to the archive
 - `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations)
 
 **`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: its own markdown formatter rendered with glamour, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. It never edits ticket contents (no create, delete, retitle, status, type or dep changes). Tests drive `Model.Update` in-process.

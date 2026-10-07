@@ -26,6 +26,8 @@ var (
 	ErrRelatedDep      = errors.New("a ticket cannot depend on its own ancestor or descendant")
 	ErrDepCycle        = errors.New("dependency cycle")
 	ErrCorrupt         = errors.New("tickets are unreadable or corrupt")
+	ErrNotClosed       = errors.New("has tickets that are not closed")
+	ErrCrossDep        = errors.New("blocked-by crosses the subtree boundary")
 )
 
 // Tree is an in-memory view of a store: every ticket, the ordered roots and
@@ -43,6 +45,7 @@ type Tree struct {
 	dirty      []string
 	rootsDirty bool
 	gone       []string
+	archived   []string
 }
 
 // Load reads every ticket and ROOT.md. Unreadable files and integrity problems
@@ -79,7 +82,7 @@ func (t *Tree) reload() error {
 		t.roots = nil
 		t.loadErr = append(t.loadErr, Problem{Kind: KindUnreadable, ID: "ROOT", Msg: err.Error()})
 	}
-	t.dirty, t.rootsDirty, t.gone = nil, false, nil
+	t.dirty, t.rootsDirty, t.gone, t.archived = nil, false, nil, nil
 	t.reindex()
 	return nil
 }
@@ -290,11 +293,17 @@ func (t *Tree) apply(fn func() error) error {
 		_ = t.reload()
 		return err
 	}
-	t.dirty, t.rootsDirty, t.gone = nil, false, nil
+	for _, id := range append(t.gone, t.archived...) {
+		delete(t.tickets, id)
+	}
+	t.dirty, t.rootsDirty, t.gone, t.archived = nil, false, nil, nil
 	t.reindex()
 	return nil
 }
 
+// commit saves dirty tickets and ROOT.md before deleting or archiving files,
+// so a crash midway leaves orphaned files (reported by fsck) rather than
+// lost ones.
 func (t *Tree) commit() error {
 	for _, id := range t.dirty {
 		if err := t.st.Save(t.tickets[id]); err != nil {
@@ -308,6 +317,11 @@ func (t *Tree) commit() error {
 	}
 	for _, id := range t.gone {
 		if err := t.st.Delete(id); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+	}
+	for _, id := range t.archived {
+		if _, err := t.st.Archive(id); err != nil {
 			return err
 		}
 	}

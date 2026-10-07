@@ -429,3 +429,44 @@ func TestValidateRejectsEmptyType(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestArchive(t *testing.T) {
+	s := newStore(t)
+	if _, err := os.Stat(s.ArchiveDir()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("archive dir exists before first archive: %v", err)
+	}
+	src := filepath.Join(s.Dir, "fanir7.md")
+	// Taken names in the archive get the shortest free numeric suffix.
+	want := []string{"fanir7.md", "fanir7-2.md", "fanir7-3.md"}
+	for i, name := range want {
+		data := []byte("---\nid: fanir7\nstatus: closed\ntitle-ish: not parsed\n---\n# v" + string(rune('1'+i)) + "\n")
+		if err := os.WriteFile(src, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		dst, err := s.Archive("fanir7")
+		if err != nil || dst != filepath.Join(s.ArchiveDir(), name) {
+			t.Fatalf("Archive = %q, %v; want %s", dst, err, name)
+		}
+		if got, _ := os.ReadFile(dst); !reflect.DeepEqual(got, data) {
+			t.Errorf("%s not moved byte for byte: %q", name, got)
+		}
+		if _, err := os.Stat(src); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("source still present after archiving to %s", name)
+		}
+	}
+	if ids, _ := s.IDs(); len(ids) != 0 {
+		t.Errorf("archived files listed as live: %v", ids)
+	}
+	// A suffixed name is free again only when its exact file is gone.
+	os.Remove(filepath.Join(s.ArchiveDir(), "fanir7-2.md"))
+	os.WriteFile(src, []byte("x"), 0o644)
+	if dst, err := s.Archive("fanir7"); err != nil || filepath.Base(dst) != "fanir7-2.md" {
+		t.Errorf("Archive = %q, %v", dst, err)
+	}
+	if _, err := s.Archive("fanir7"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Archive missing: %v", err)
+	}
+	if _, err := s.Archive("../x"); err == nil {
+		t.Error("expected error for invalid id")
+	}
+}

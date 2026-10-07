@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	rootName = "ROOT"
-	ext      = ".md"
+	rootName   = "ROOT"
+	ext        = ".md"
+	archiveDir = "archive"
 )
 
 // ErrNotFound is returned (wrapped) when a ticket does not exist.
@@ -96,6 +97,43 @@ func (s *Store) Delete(id string) error {
 		return fmt.Errorf("delete %s: %w", id, err)
 	}
 	return nil
+}
+
+// ArchiveDir is the directory archived tickets are moved into. Nothing reads
+// it back.
+func (s *Store) ArchiveDir() string { return filepath.Join(s.Dir, archiveDir) }
+
+// Archive moves the ticket file byte for byte into ArchiveDir, creating it if
+// needed. If <id>.md is taken there, the file gets the shortest free numeric
+// suffix (<id>-2.md, <id>-3.md, ...). It returns the archived file's path.
+// Callers hold the store lock, so checking for a free name then renaming is
+// not racy.
+func (s *Store) Archive(id string) (string, error) {
+	if !validID(id) {
+		return "", fmt.Errorf("invalid ticket id %q", id)
+	}
+	if _, err := os.Stat(s.path(id)); errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("%s: %w", id, ErrNotFound)
+	} else if err != nil {
+		return "", fmt.Errorf("archive %s: %w", id, err)
+	}
+	dir := s.ArchiveDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create %s: %w", dir, err)
+	}
+	dst := filepath.Join(dir, id+ext)
+	for n := 2; ; n++ {
+		if _, err := os.Lstat(dst); errors.Is(err, fs.ErrNotExist) {
+			break
+		} else if err != nil {
+			return "", fmt.Errorf("archive %s: %w", id, err)
+		}
+		dst = filepath.Join(dir, fmt.Sprintf("%s-%d%s", id, n, ext))
+	}
+	if err := os.Rename(s.path(id), dst); err != nil {
+		return "", fmt.Errorf("archive %s: %w", id, err)
+	}
+	return dst, nil
 }
 
 // IDs returns all ticket ids, sorted.

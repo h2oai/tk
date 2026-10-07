@@ -365,3 +365,35 @@ func TestTypes(t *testing.T) {
 	_, errs, _ = e.fail("type", b, "epic")
 	contains(t, errs, "task, bug, feature, chore")
 }
+
+func TestArchive(t *testing.T) {
+	e := newEnv(t)
+	p := e.newT("Parent")
+	c := e.newT("Child", "--under", p)
+	other := e.newT("Other")
+
+	_, errs, code := e.fail("archive", p)
+	if code != ExitGeneric || !strings.Contains(errs, "not closed") {
+		t.Errorf("archive open: %d %q", code, errs)
+	}
+	e.run("dep", other, c)
+	_, errs, _ = e.fail("archive", p, "--force")
+	contains(t, errs, other+" waits on "+c)
+	e.run("undep", other, c)
+
+	out := e.run("archive", p, "--force")
+	if out != p+" archived \"Parent\"\n"+c+" archived \"Child\"\n" {
+		t.Errorf("archive output:\n%s", out)
+	}
+	for _, f := range []string{p, c} {
+		if _, err := os.Stat(filepath.Join(e.dir, "archive", f+".md")); err != nil {
+			t.Error(err)
+		}
+	}
+	if ls := e.run("ls", "--all"); strings.Contains(ls, p) || !strings.Contains(ls, other) {
+		t.Errorf("ls:\n%s", ls)
+	}
+	_, errs, _ = e.fail("show", c)
+	contains(t, errs, "not found")
+	contains(t, e.run("fsck"), "ok")
+}
