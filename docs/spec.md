@@ -18,6 +18,7 @@ There is no priority, assignee, links or external-ref. Order and hierarchy repla
 .tickets/
   ROOT.md        # ordered root ids
   <id>.md        # one file per ticket
+  archive/       # archived tickets, flat; no ROOT.md
 ```
 
 `<id>.md`:
@@ -37,6 +38,7 @@ Body text, notes appended as timestamped sections.
 ```
 
 - The hierarchy is stored **only** in `children` lists and `ROOT.md`. A child does not store its parent; the parent is derived by scanning.
+- Archived tickets live in `.tickets/archive/` (see [Archival](#archival)): flat `<id>.md` files, no `ROOT.md`, created lazily by `tk archive`.
 - IDs are pronounceable five-letter stems followed by a digit 1–9 (e.g. `fanir7`, `igoro8`). The stem is either CVCVC (consonant-vowel-consonant-vowel-consonant) or VCVCV (vowel-consonant-vowel-consonant-vowel), chosen randomly; Q and X are excluded from consonants, and 0 is excluded from digits to avoid confusion with letters. Partial matching: exact match first, then substring; error on zero or multiple matches.
 - Concurrency: every command takes an advisory `flock` on `.tickets/.lock` (exclusive for commands that write, shared for `ls`, `show`, `ready`, `fsck`) for its whole load-modify-save cycle, waiting up to 5 seconds. The lock is released when the process exits, so crashes leave nothing stale. `edit` locks only while reading and saving (and refuses to save if the ticket changed meanwhile); `tui` locks and reloads from disk on each reorder. The `.lock` file can be gitignored. This serializes writers but does not claim tickets: two workers asking `tk ready` still get the same ticket.
 - Writes are atomic (temp file then rename). `mv` edits up to three files (old parent, new parent, and the moved ticket is untouched).
@@ -93,6 +95,7 @@ Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] 
 | `tk tui` | Interactive reorder: `j/k` move the cursor, `J/K` down/up among siblings, `H/L` outdent/indent, `g/G` top/bottom among siblings, `enter` open the selected ticket in a read-only, scrollable detail view rendered with glamour (`j/k`, `pgup/pgdn`, `g/G` scroll; `J/K` or `→/←` next/previous ticket in list order; `esc` or `q` back), `q` quit. Changes apply immediately through the same checks as `tk mv`; errors show in the status line. It never edits ticket contents. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage `blocked-by`. |
 | `tk rm <id>` | Refuses if the ticket has children or is anyone's blocker. `--force` deletes the subtree and detaches deps. |
+| `tk archive <id> [--force]` | Move the closed subtree into `.tickets/archive/` (see [Archival](#archival)). |
 | `tk fsck` | Verify integrity: orphans, ticket in two parents, dangling ids, cycles, dep rule violations (exit 1), plus `warn:` lines for tickets above their unclosed blockers (exit unaffected). Orphan lines hint at the repair: `tk mv <id> --root` (or `--under`) re-attaches the ticket with its subtree. |
 
 Addressing is by id only (partial matching). Positional paths are never accepted as arguments, because they shift on reorder.
@@ -104,306 +107,48 @@ Free-form text input contract: inline, stdin with `-`, or file with `-F`.
 - Claims or assignees for multiple workers: single worker assumed (concurrent writes are serialized by the lock, but `ready` does not reserve a ticket). Use `tk ready <epic>` to scope parallel streams by hand.
 - Priority, assignee, links, jq `query`, live `--watch` tree, `prune`, `clean`.
 - Positional addressing and a single outline file.
+- Archive retrieval: there is no `unarchive`, no way to list the archive, and no
+  command that reads an archived ticket. Inspect or delete `.tickets/archive/` by
+  hand.
 
-Archival is specified in [Appendix: Archival](#appendix-archival). An alternative
-design that relocates archived subtrees is specified in
-[Appendix B: Archival by relocation](#appendix-b-archival-by-relocation).
+## Archival
+
+Archiving is a **one-way move**. It relocates a finished subtree out of the live
+tree into a sibling directory, and nothing reads that directory back: `tk archive`
+is the only command that touches it. To inspect or delete archived tickets, work
+with `.tickets/archive/` by hand.
+
+- A ticket is archived **if and only if** it lives in `.tickets/archive/`.
+- `archive/` holds files flat, regardless of depth, and has no `ROOT.md`. It is
+  created lazily by the first successful archive; with `--dir D` it is `D/archive/`.
+- Files move **byte for byte**: frontmatter, status and body are not rewritten. An
+  archived ticket keeps its own `children` and `blocked-by` lists, so an archived
+  subtree stays self-consistent inside the archive.
+
+`tk archive <id> [--force]` moves the subtree rooted at a live `<id>` into
+`archive/`, printing one line per moved ticket: `<id> archived "<title>"`.
+
+- Every ticket in the subtree must be `closed`; `--force` first closes the whole
+  subtree (as `close --force`).
+- The live tree keeps **no reference** to an archived ticket: its id is removed
+  from its parent's `children` list, or from `ROOT.md` when it was a root.
+- The archive is refused while any `blocked-by` edge crosses the subtree boundary
+  — a live ticket listing a subtree member, or a subtree member listing a live
+  ticket. `--force` never overrides this. Edges with both ends inside the subtree
+  move with it.
+- Filenames do not collide: if `archive/<id>.md` already exists, the incoming file
+  gets the shortest free numeric suffix (`<id>-2.md`, `<id>-3.md`, …). Only files
+  whose exact name is taken are suffixed; the frontmatter id is unchanged.
+- The move is best-effort: files are renamed and the live list rewritten without a
+  journal, so a crash can leave a half-moved subtree. The live tree's normal `fsck`
+  checks report the damage — a dangling child id or an orphaned file.
+
+Every other command addresses the live tree only. Id resolution never scans
+`archive/`, there is no `archive:` prefix, and an id that lives only in the archive
+reports `not found`. `tk new` does not consult the archive, and `fsck` has no
+archive-specific checks.
 
 ## Implementation notes
 
 - Language and libraries: Go, `spf13/cobra`, `gopkg.in/yaml.v3`.
 - Packages: `internal/store` (load/save, ID resolution, atomic writes), `internal/tree` (DFS, ready, dep validation, mv), `cmd/` (thin cobra commands).
-
-## Appendix: Archival
-
-Archiving is a reversible hiding state layered *on top of* status. It never changes
-a status: it only removes a ticket and its whole subtree from listings, selection
-and warnings, while keeping every file on disk so `unarchive` can restore it
-exactly where it was.
-
-### On-disk representation
-
-An archived ticket carries `archived: true` in its frontmatter. The key is omitted
-whenever it is false, so tickets written before this feature read as unarchived.
-
-```markdown
----
-id: fanir7
-status: closed
-type: task
-archived: true
-blocked-by: [lovet2]
-children: [kamop3]
-created: 2026-10-05T12:00:00Z
----
-# Title
-```
-
-Frontmatter parsing is strict, so an older `tk` binary rejects a ticket once it
-contains the unknown `archived` key. This is accepted: archival is a v2 feature and
-the tickets directory is expected to move as one.
-
-### Invariants
-
-- An archived ticket is always `closed`.
-- Every descendant of an archived ticket is archived.
-- The converse is allowed: an unarchived ticket may have archived children.
-
-`tk fsck` reports a new **`archive`** problem (exit 1) when either invariant is
-broken, i.e. an archived ticket whose status is not closed, or an archived ticket
-with any unarchived descendant. Blockers and deps that point at an archived ticket
-are not problems.
-
-### Commands
-
-| Command | Behaviour |
-|---|---|
-| `tk archive <id> [--force]` | Archive the ticket and its whole subtree. Requires every ticket in the subtree to be closed; `--force` closes the subtree first (as if by `close --force`). Fails while anything in the subtree is unclosed. |
-| `tk unarchive <id>` | Unarchive the ticket's subtree and every archived ancestor (required so the ticket is reachable again). Statuses are unchanged (they are already closed). A no-op on a ticket that is not archived. |
-
-- `archive` prints each affected ticket as `<id> archived "<title>"`; `unarchive`
-  prints `<id> unarchived "<title>"`.
-- `rm` may still permanently delete an archived ticket (`--force` for a subtree).
-  Every other mutating command — `start`, `close`, `reopen`, `note`, `edit`, `type`,
-  `dep`, `mv`, `up`, `down`, `top`, `bottom` — refuses an archived ticket.
-  `show` still reads one.
-- `new` or `mv` under an archived parent is refused, and so is `dep` when either the
-  holder or the blocker is archived. Unarchive first.
-- Partial-id resolution treats archived tickets like any other: a partial id may
-  resolve to an archived ticket, and the command then reports why it refuses.
-
-### Visibility
-
-- `ls`, `ready`, `tui`, `fsck`'s misorder warnings and the `dep`/`mv` warnings skip
-  archived tickets and their subtrees. `ready` never selects an archived ticket and
-  never stops on one.
-- `ls --archived` reveals archived subtrees; `ls --all` reveals closed-only
-  subtrees. Archived hiding dominates: an archived node appears only with
-  `--archived`, a non-archived but closed node only with `--all`, and a subtree that
-  is both needs both flags. Passing both shows everything.
-- `ls <archived-id>` shows the whole archived subtree, as if `--archived` were
-  scoped to it.
-- Archived lines use the `[a]` marker; `show` prints `archived: true`.
-
-### Positions
-
-Positions shown for the visible tree skip archived nodes, so `ls` shows no gaps.
-A parallel *raw* position — a DFS that counts every ticket, archived included — is
-used only when displaying an archived ticket, in `show`, `ls --archived` and
-`unarchive`. Positions shift when a ticket is archived or unarchived.
-
-### Blocking
-
-- An archived blocker counts as **satisfied**: a ticket that waits on it is no
-  longer blocked, and `ready` never reports it as an unclosed blocker.
-- An archived ticket's own `blocked-by` entries are ignored while it is archived.
-- Positions in `ready` and in blocker warnings are the visible ones.
-
-### Example
-
-```console
-$ tk ls
-1 [ ] rasot4 [task] Ship it
-
-$ tk new "Release 1.0"                    # fanir7
-fanir7
-$ tk new "Write docs" --under fanir7       # kamop3
-kamop3
-$ tk close fanir7 --force
-kamop3 closed "Write docs"
-fanir7 closed "Release 1.0"
-
-$ tk archive fanir7
-kamop3 archived "Write docs"
-fanir7 archived "Release 1.0"
-
-$ tk ls
-1 [ ] rasot4 [task] Ship it
-
-$ tk ls --archived
-1 [ ] rasot4 [task] Ship it
-2 [a] fanir7 [task] Release 1.0
-  2.1 [a] kamop3 [task] Write docs
-
-$ tk show kamop3
-# Write docs
-id:       kamop3
-status:   closed
-archived: true
-position: 2.1
-...
-
-$ tk start kamop3
-kamop3: archived
-
-$ tk unarchive kamop3
-kamop3 unarchived "Write docs"
-fanir7 unarchived "Release 1.0"
-
-$ tk ls --all
-1 [ ] rasot4 [task] Ship it
-2 [x] fanir7 [task] Release 1.0
-  2.1 [x] kamop3 [task] Write docs
-```
-
-## Appendix B: Archival by relocation
-
-An alternative to [Appendix: Archival](#appendix-archival), designed from
-scratch: it shares no state or rules with that design. Where Appendix A hides a
-ticket in place with an `archived` flag, this design *moves* a finished subtree
-out of the tree into a sibling directory. The move is **one-way** and the
-directory is the only record that a ticket was archived. There is no `archived`
-frontmatter key and no `unarchive`.
-
-### On-disk layout
-
-```
-.tickets/
-  ROOT.md
-  <id>.md            # live tickets
-  archive/
-    <id>.md          # archived tickets, flat regardless of depth
-```
-
-- A ticket is archived **if and only if it lives in `.tickets/archive/`**.
-- `archive/` is created lazily by the first successful `archive`; it has no
-  `ROOT.md`. With `--dir D`, the archive is `D/archive/`.
-- Files are moved **byte for byte**: frontmatter, status and body are not
-  rewritten. An archived ticket keeps its own `children` and `blocked-by` lists,
-  so an archived subtree stays self-consistent inside the archive.
-
-### Invariants
-
-- An archived ticket is always `closed`.
-- The live tree keeps **no reference** to an archived ticket: its id is removed
-  from its parent's `children` list, or from `ROOT.md` when it was a root. The
-  archive is a detached side-store.
-- No `blocked-by` edge may cross the boundary. An archive is refused while any
-  live ticket lists a subtree member, or any subtree member lists a live ticket.
-  Edges with both ends inside the subtree are ignored and move with it. This
-  refusal is absolute: `--force` never overrides it.
-
-### Commands
-
-| Command | Behaviour |
-|---|---|
-| `tk archive <id> [--force]` | Move the closed subtree rooted at a live `<id>` into `archive/`; `--force` closes the subtree first. Refused on a crossing `blocked-by` edge. |
-| `tk rm archive:<id> [--force]` | Permanently delete an archived ticket; `--force` deletes its archived subtree. |
-| `tk show archive:<id>` | Read an archived ticket. The only command that reads one. |
-
-### `tk archive <id> [--force]`
-
-- Accepts exactly one **live** id. `archive:<id>` fails with `already archived`,
-  and an id that exists only in the archive fails with
-  `not found (try show archive:<id>)`.
-- Requires every ticket in the subtree to be closed. `--force` first closes the
-  whole subtree (as `close --force`) and does nothing else.
-- Refuses while any `blocked-by` edge crosses the subtree boundary (see
-  invariants); `undep` first. Internal edges are ignored.
-- Prints one line per moved ticket: `<id> archived "<title>"`.
-- The move is best-effort: files are renamed and the live list rewritten without
-  a journal, so a crash can leave a half-moved subtree. `fsck` reports it.
-
-### Addressing
-
-- Archived tickets are addressed as `archive:<id>` or `archive:<partial>`, and
-  resolve only against `.tickets/archive/` (exact match, then unique substring).
-- Archived tickets are **not listable**: `ls`, `ready`, `tui`, fsck's misorder
-  warnings and the `dep`/`mv` warnings never see them, and no flag reveals them.
-  The normal loader scans `.tickets/` only; `show archive:`, `rm archive:` and
-  `fsck` read the archive directory on demand.
-- Only `show` reads an archived ticket. Every mutating command recognises the
-  `archive:` prefix and refuses with `<id> is archived`.
-- `show archive:<live-id>` fails with `<id> is not archived`; a bare id that
-  exists only in the archive fails with `not found (try show archive:<id>)`.
-- `tk new` checks both directories before issuing an id, so an archived id is
-  never reused.
-
-### `tk show archive:<id>`
-
-Prints the normal `show` layout plus an `archived: true` field line. It shows no
-position (the archive has no ordered root list) and lists children by id, so an
-archived epic stays navigable.
-
-### Deletion
-
-`tk rm archive:<id>` permanently deletes an archived ticket; `--force` deletes
-its whole archived subtree, walking the archived `children` lists. `archive` and
-`rm archive:` are the only commands that write to `archive/`.
-
-### `tk fsck`
-
-Reports the following as **`archive`** problems (exit 1), without repair:
-
-- an archived ticket whose status is not `closed`;
-- an archived ticket whose listed child is missing from the archive;
-- an id that exists in both `.tickets/` and `.tickets/archive/`;
-- a half-moved subtree, or a live reference left pointing at an id that now
-  lives only in the archive.
-
-`archive:` addressing needs no separate fsck check: a live ticket that was moved
-while still referenced is one of the half-move cases above.
-
-### Concurrency
-
-Archive operations reuse the existing `.tickets/.lock`: exclusive for `archive`
-and `rm archive:`, shared for `show archive:` and `fsck`.
-
-### Compatibility
-
-`archived: true` is not part of this design. Frontmatter parsing is strict, so a
-ticket carrying that key is unreadable and `fsck` reports it, exactly like any
-other unknown key. Nothing else changes: the live tree, `ls`, `ready` and `tui`
-are unaffected because they never scan `archive/`.
-
-### Example
-
-```console
-$ tk ls
-1 [ ] rasot4 [task] Ship it
-
-$ tk new "Release 1.0"                    # fanir7
-fanir7
-$ tk new "Write docs" --under fanir7       # kamop3
-kamop3
-$ tk close fanir7 --force
-kamop3 closed "Write docs"
-fanir7 closed "Release 1.0"
-
-$ tk archive fanir7
-kamop3 archived "Write docs"
-fanir7 archived "Release 1.0"
-
-$ tk ls
-1 [ ] rasot4 [task] Ship it
-
-$ tk show archive:fanir7
-# Release 1.0
-id:       fanir7
-status:   closed
-type:     task
-archived: true
-children: [kamop3]
-...
-
-$ tk show archive:kamop3
-# Write docs
-id:       kamop3
-status:   closed
-type:     task
-archived: true
-...
-
-$ tk start fanir7
-fanir7: not found
-
-$ tk start archive:fanir7
-fanir7 is archived; only show can read it
-
-$ ls .tickets/archive
-fanir7.md  kamop3.md
-
-$ tk rm archive:fanir7 --force
-kamop3 removed
-fanir7 removed
-```
