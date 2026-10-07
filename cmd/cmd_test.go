@@ -246,8 +246,11 @@ func TestEdit(t *testing.T) {
 	good := filepath.Join(dir, "good.sh")
 	os.WriteFile(good, []byte("#!/bin/sh\nsed -i.bak 's/^# Alpha/# Renamed/' \"$1\"\n"), 0o755)
 	t.Setenv("EDITOR", good)
-	e.run("edit", a)
+	contains(t, e.run("edit", a), "edited "+a)
 	contains(t, e.run("show", a), "# Renamed")
+
+	t.Setenv("EDITOR", "true")
+	contains(t, e.run("edit", a), "unchanged "+a)
 
 	bad := filepath.Join(dir, "bad.sh")
 	os.WriteFile(bad, []byte("#!/bin/sh\necho garbage > \"$1\"\n"), 0o755)

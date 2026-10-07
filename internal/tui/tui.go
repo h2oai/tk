@@ -1,7 +1,7 @@
 // Package tui is a Bubble Tea interface for reordering tickets. It holds no
 // ordering rules: every change goes through tree.Tree, and the view is rebuilt
-// from the tree afterwards. It can show a ticket read-only but never edits
-// ticket contents.
+// from the tree afterwards. It shows tickets read-only and changes their
+// contents only by handing off to $EDITOR with tk edit's rules.
 package tui
 
 import (
@@ -12,7 +12,7 @@ import (
 	"github.com/h2oai/tk/internal/tree"
 )
 
-const help = "j/k move  J/K reorder  H/L outdent/indent  g/G top/bottom  enter open  q quit"
+const help = "j/k move  J/K reorder  H/L outdent/indent  g/G top/bottom  enter open  e edit  q quit"
 
 // row is one line of the outline.
 type row struct {
@@ -34,6 +34,7 @@ type Model struct {
 	scroll   int      // first visible line of the detail view
 	status   string
 	lock     Locker
+	exec     execFunc // runs the editor; tea.ExecProcess outside tests
 }
 
 // Locker takes the store lock (exclusive or shared) and returns its release
@@ -44,7 +45,7 @@ type Locker func(exclusive bool) (unlock func(), err error)
 // the tree from disk and then applies the change, so edits made by other tk
 // processes since the last key are neither lost nor overwritten.
 func New(t *tree.Tree, lock Locker) *Model {
-	m := &Model{t: t, lock: lock}
+	m := &Model{t: t, lock: lock, exec: tea.ExecProcess}
 	m.rebuild()
 	return m
 }
@@ -126,12 +127,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail = renderDetail(m.t, m.detailID, m.width)
 			m.scrollBy(0)
 		}
+	case editDoneMsg:
+		m.finishEdit(msg)
 	case tea.KeyMsg:
 		if m.detailID != "" {
-			if m.updateDetailKey(msg.String()) {
-				return m, tea.Quit
-			}
-			return m, nil
+			return m, m.updateDetailKey(msg.String())
 		}
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -142,6 +142,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = max(m.cursor-1, 0)
 		case "enter":
 			m.open()
+		case "e":
+			return m, m.startEdit(m.selected())
 		case "J":
 			m.mutate((*tree.Tree).Down)
 		case "K":

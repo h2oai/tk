@@ -136,6 +136,10 @@ func (t *Tree) sortedIDs() []string {
 // Get returns the ticket with the exact id, or nil.
 func (t *Tree) Get(id string) *store.Ticket { return t.tickets[id] }
 
+// Raw returns the ticket's file exactly as it is on disk, which can differ
+// from the loaded ticket if another process changed it since.
+func (t *Tree) Raw(id string) ([]byte, error) { return t.st.ReadRaw(id) }
+
 // Resolve maps a full or partial id to a full id.
 func (t *Tree) Resolve(partial string) (string, error) {
 	return store.ResolveID(t.sortedIDs(), partial)

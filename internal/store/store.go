@@ -74,6 +74,14 @@ func (s *Store) Load(id string) (*Ticket, error) {
 	return t, nil
 }
 
+// ReadRaw returns the ticket file's bytes exactly as they are on disk.
+func (s *Store) ReadRaw(id string) ([]byte, error) {
+	if !validID(id) {
+		return nil, fmt.Errorf("invalid ticket id %q", id)
+	}
+	return os.ReadFile(s.path(id))
+}
+
 // Save atomically writes the ticket (temp file, then rename).
 func (s *Store) Save(t *Ticket) error {
 	data, err := Marshal(t)

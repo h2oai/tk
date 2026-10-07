@@ -40,7 +40,7 @@ Body text, notes appended as timestamped sections.
 - The hierarchy is stored **only** in `children` lists and `ROOT.md`. A child does not store its parent; the parent is derived by scanning.
 - Archived tickets live in `.tickets/archive/` (see [Archival](#archival)): flat `<id>.md` files, no `ROOT.md`, created lazily by `tk archive`.
 - IDs are pronounceable five-letter stems followed by a digit 1–9 (e.g. `fanir7`, `igoro8`). The stem is either CVCVC (consonant-vowel-consonant-vowel-consonant) or VCVCV (vowel-consonant-vowel-consonant-vowel), chosen randomly; Q and X are excluded from consonants, and 0 is excluded from digits to avoid confusion with letters. Partial matching: exact match first, then substring; error on zero or multiple matches.
-- Concurrency: every command takes an advisory `flock` on `.tickets/.lock` (exclusive for commands that write, shared for `ls`, `show`, `ready`, `fsck`) for its whole load-modify-save cycle, waiting up to 5 seconds. The lock is released when the process exits, so crashes leave nothing stale. `edit` locks only while reading and saving (and refuses to save if the ticket changed meanwhile); `tui` locks and reloads from disk on each reorder. The `.lock` file can be gitignored. This serializes writers but does not claim tickets: two workers asking `tk ready` still get the same ticket.
+- Concurrency: every command takes an advisory `flock` on `.tickets/.lock` (exclusive for commands that write, shared for `ls`, `show`, `ready`, `fsck`) for its whole load-modify-save cycle, waiting up to 5 seconds. The lock is released when the process exits, so crashes leave nothing stale. `edit` (and the TUI's `e`) locks only while reading and saving (and refuses to save if the ticket changed meanwhile); `tui` locks and reloads from disk on each reorder. The `.lock` file can be gitignored. This serializes writers but does not claim tickets: two workers asking `tk ready` still get the same ticket.
 - Writes are atomic (temp file then rename). `mv` edits up to three files (old parent, new parent, and the moved ticket is untouched).
 - `tk` directory defaults to `.tickets`, override with `--dir`.
 
@@ -86,13 +86,13 @@ Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] 
 | `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Each line shows `[type]` before the title. Closed subtrees hidden unless `--all`. Positions are display only. Walks from `ROOT.md`, so unreachable tickets (orphans) are not shown; when any exist, a one-line warning goes to stderr pointing at `tk fsck`. |
 | `tk show <id>` | Title, body, status, type, blockers, children, position. |
 | `tk type <id> <type>` | Set the type (case-insensitive, stored lowercase). Works on any status; setting the current type is a silent no-op; no status or ancestor effects. |
-| `tk edit <id>` | Open in `$EDITOR`. |
+| `tk edit <id>` | Open in `$EDITOR`. Prints `unchanged <id>` and writes nothing if the file was saved as is. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id>` / `tk reopen <id>` | Status transitions, with the rules above. |
 | `tk ready [<epic>]` | See above. |
 | `tk mv <id> --under P --at N` (also `--before/--after <id>`) | Reparent and/or reposition. |
 | `tk up/down/top/bottom <id>` | Move within siblings. |
-| `tk tui` | Interactive reorder: `j/k` move the cursor, `J/K` down/up among siblings, `H/L` outdent/indent, `g/G` top/bottom among siblings, `enter` open the selected ticket in a read-only, scrollable detail view rendered with glamour (`j/k`, `pgup/pgdn`, `g/G` scroll; `J/K` or `→/←` next/previous ticket in list order; `esc` or `q` back), `q` quit. Changes apply immediately through the same checks as `tk mv`; errors show in the status line. It never edits ticket contents. |
+| `tk tui` | Interactive reorder: `j/k` move the cursor, `J/K` down/up among siblings, `H/L` outdent/indent, `g/G` top/bottom among siblings, `enter` open the selected ticket in a read-only, scrollable detail view rendered with glamour (`j/k`, `pgup/pgdn`, `g/G` scroll; `J/K` or `→/←` next/previous ticket in list order; `esc` or `q` back), `e` (list or detail view) edit the ticket in `$EDITOR` with `tk edit`'s rules, after which the detail view re-renders from the top, `q` quit. Changes apply immediately through the same checks as `tk mv`; errors show in the status line. It changes ticket contents only through `e`. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage `blocked-by`. |
 | `tk rm <id>` | Refuses if the ticket has children or is anyone's blocker. `--force` deletes the subtree and detaches deps. |
 | `tk archive <id> [--force] [-n]` | Move the closed subtree into `.tickets/archive/` (see [Archival](#archival)). |

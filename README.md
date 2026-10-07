@@ -81,7 +81,7 @@ For example:
 
 ## Interactive reordering
 
-`tk tui` opens a keyboard UI for reordering the tree: `j`/`k` move the cursor, `J`/`K` move a ticket down/up among its siblings, `H`/`L` outdent/indent, `g`/`G` move it first/last among its siblings, `Enter` opens the selected ticket in a read-only detail view (`j`/`k` scroll, `g`/`G` top/bottom, `Esc` or `q` back), and `q` quits. Every change is applied immediately through the same checks as `tk mv`, and errors appear in the status line. The TUI reorders and displays tickets; it never edits ticket contents.
+`tk tui` opens a keyboard UI for reordering the tree: `j`/`k` move the cursor, `J`/`K` move a ticket down/up among its siblings, `H`/`L` outdent/indent, `g`/`G` move it first/last among its siblings, `Enter` opens the selected ticket in a read-only detail view (`j`/`k` scroll, `g`/`G` top/bottom, `Esc` or `q` back), `e` (in either view) opens the ticket in `$EDITOR` like `tk edit`, and `q` quits. Every change is applied immediately through the same checks as `tk mv`, and errors appear in the status line. The TUI changes ticket contents only through `e`.
 
 ## Ticket readiness
 
@@ -120,13 +120,13 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>] <title>`), `1` n
 | `tk ls [--all] [id]` | Outline with positions (e.g. `2.1.3`) and each ticket's `[type]`. Closed subtrees hidden unless `--all`. |
 | `tk show <id>` | Title, body, status, type, blockers, children, position. |
 | `tk type <id> <task\|bug\|feature\|chore>` | Set the ticket's type. |
-| `tk edit <id>` | Open in `$EDITOR`. |
+| `tk edit <id>` | Open in `$EDITOR` (writes nothing if saved unchanged). |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id> [--force]` / `tk reopen <id>` | Status transitions. |
 | `tk ready [epic]` | Highest ready leaf; exit 0/1/2 (3 on error). |
 | `tk mv <id> [--under P \| --root] [--at N \| --before X \| --after X]` | Reparent and/or reposition. |
 | `tk up` / `down` / `top` / `bottom <id>` | Move among siblings. |
-| `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `Enter` view ticket (`Esc` back), `q` quit. Never edits contents. |
+| `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `Enter` view ticket (`Esc` back), `e` edit in `$EDITOR`, `q` quit. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. `undep` fails (exit 3) if the blocker is not currently listed. |
 | `tk rm <id> [--force]` | Refuses if the ticket has children or blocks others; `--force` deletes the subtree and detaches deps. |
 | `tk archive <id> [--force]` | Move a fully closed subtree into `.tickets/archive/` (`--force` closes it first). Refused while a `blocked-by` edge crosses the subtree boundary. One-way: no command reads the archive back. |

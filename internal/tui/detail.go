@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/h2oai/tk/internal/tree"
 )
 
-const detailHelp = "j/k scroll  pgup/pgdn page  g/G top/bottom  J/K or ←/→ next/prev  esc back"
+const detailHelp = "j/k scroll  pgup/pgdn page  g/G top/bottom  J/K or ←/→ next/prev  e edit  esc back"
 
 // markdown builds the document shown in the detail view: heading, metadata,
 // children, then the ticket body.
@@ -147,10 +148,12 @@ func (m *Model) scrollBy(n int) {
 	m.scroll = max(0, min(m.scroll+n, maxTop))
 }
 
-func (m *Model) updateDetailKey(key string) bool {
+func (m *Model) updateDetailKey(key string) tea.Cmd {
 	switch key {
 	case "ctrl+c":
-		return true
+		return tea.Quit
+	case "e":
+		return m.startEdit(m.detailID)
 	case "esc", "q":
 		m.closeDetail()
 	case "J", "right":
@@ -170,7 +173,7 @@ func (m *Model) updateDetailKey(key string) bool {
 	case "G", "end":
 		m.scrollBy(len(m.detail))
 	}
-	return false
+	return nil
 }
 
 func (m *Model) detailView() string {

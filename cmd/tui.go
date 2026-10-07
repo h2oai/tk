@@ -11,7 +11,7 @@ func newTuiCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:         "tui",
 		Annotations: map[string]string{lockAnnotation: lockNone},
-		Short:       "Reorder tickets interactively and view them (no content edits)",
+		Short:       "Reorder tickets interactively, view them and edit them in $EDITOR",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, err := app.LoadTree()
