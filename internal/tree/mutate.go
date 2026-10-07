@@ -268,10 +268,21 @@ func (t *Tree) isListed(parent, id string) bool {
 	return (parent == "" || t.tickets[parent] != nil) && slices.Contains(t.siblings(parent), id)
 }
 
-// Replace overwrites the stored ticket with tk (same id) after an edit.
+// Replace overwrites the stored ticket with tk (same id) after an edit. It
+// refuses to change status, children or blocked-by: those go through the
+// commands that apply the tree rules.
 func (t *Tree) Replace(tk *store.Ticket) error {
-	if _, err := t.mustExist(tk.ID); err != nil {
+	cur, err := t.mustExist(tk.ID)
+	if err != nil {
 		return err
+	}
+	switch {
+	case tk.Status != cur.Status:
+		return fmt.Errorf("%s: status cannot be edited, use tk start, close or reopen", tk.ID)
+	case !slices.Equal(tk.Children, cur.Children):
+		return fmt.Errorf("%s: children cannot be edited, use tk mv", tk.ID)
+	case !slices.Equal(tk.BlockedBy, cur.BlockedBy):
+		return fmt.Errorf("%s: blocked-by cannot be edited, use tk dep or undep", tk.ID)
 	}
 	return t.apply(func() error {
 		t.tickets[tk.ID] = tk

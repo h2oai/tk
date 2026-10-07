@@ -86,7 +86,7 @@ Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] 
 | `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Each line shows `[type]` before the title. Closed subtrees hidden unless `--all`. Positions are display only. Walks from `ROOT.md`, so unreachable tickets (orphans) are not shown; when any exist, a one-line warning goes to stderr pointing at `tk fsck`. |
 | `tk show <id>` | Title, body, status, type, blockers, children, position. |
 | `tk type <id> <type>` | Set the type (case-insensitive, stored lowercase). Works on any status; setting the current type is a silent no-op; no status or ancestor effects. |
-| `tk edit <id>` | Open in `$EDITOR`. Prints `unchanged <id>` and writes nothing if the file was saved as is. |
+| `tk edit <id>` | Open in `$EDITOR`. Prints `unchanged <id>` and writes nothing if the file was saved as is. Changing `status`, `children` or `blocked-by` is refused and nothing is saved; use `start`/`close`/`reopen`, `mv` and `dep`/`undep`, which apply the tree rules. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id>` / `tk reopen <id>` | Status transitions, with the rules above. |
 | `tk ready [<epic>]` | See above. |

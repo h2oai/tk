@@ -133,3 +133,36 @@ func TestStartMissingTicket(t *testing.T) {
 		t.Errorf("err %v", err)
 	}
 }
+
+func TestFinishRejectsStructuralChanges(t *testing.T) {
+	for name, tc := range map[string]struct {
+		change func(string) string
+		want   string
+	}{
+		"status": {
+			func(s string) string { return strings.Replace(s, "status: open", "status: closed", 1) },
+			"use tk start, close or reopen",
+		},
+		"children": {
+			func(s string) string { return strings.Replace(s, "status: open", "status: open\nchildren: [bbb]", 1) },
+			"use tk mv",
+		},
+		"blocked-by": {
+			func(s string) string { return strings.Replace(s, "status: open", "status: open\nblocked-by: [bbb]", 1) },
+			"use tk dep or undep",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tr, st := setup(t)
+			s := write(t, tr, func(s string) string { return strings.Replace(tc.change(s), "# Alpha", "# Beta", 1) })
+			_, err := s.Finish(nil)
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "nothing saved") {
+				t.Errorf("err %v", err)
+			}
+			if tk, _ := st.Load("aaa"); tk.Title != "Alpha" || tk.Status != store.StatusOpen || len(tk.Children)+len(tk.BlockedBy) != 0 {
+				t.Errorf("ticket changed: %+v", tk)
+			}
+			gone(t, s)
+		})
+	}
+}

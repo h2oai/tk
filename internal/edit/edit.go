@@ -129,7 +129,12 @@ func (s *Session) Finish(lock Locker) (bool, error) {
 		if cur, err := s.t.Raw(s.ID); err != nil || !bytes.Equal(cur, s.orig) {
 			return fmt.Errorf("%s changed while editing, nothing saved", s.ID)
 		}
-		return s.t.Replace(tk)
+		// Replace rolls back on failure, so a refused edit leaves the
+		// ticket as it was.
+		if err := s.t.Replace(tk); err != nil {
+			return fmt.Errorf("%w, nothing saved", err)
+		}
+		return nil
 	})
 	return err == nil, err
 }
