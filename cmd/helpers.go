@@ -111,7 +111,7 @@ func placeFromFlags(t *tree.Tree, at int, before, after string) (tree.Place, err
 	return place, nil
 }
 
-// titleWithType prefixes the title with its [type] tag for ls and ready.
+// titleWithType prefixes the title with its [type/effort] tag for ls and ready.
 func titleWithType(tk *store.Ticket) string {
-	return "[" + string(tk.Type) + "] " + tk.Title
+	return "[" + string(tk.Type) + "/" + string(tk.Effort) + "] " + tk.Title
 }

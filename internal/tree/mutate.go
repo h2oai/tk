@@ -330,3 +330,26 @@ func (t *Tree) SetType(id string, ty store.Type) (bool, error) {
 	})
 	return err == nil, err
 }
+
+// SetEffort sets the ticket effort. Like SetType it is pure metadata: no
+// status or ancestor effects, and setting the current effort is a no-op. It
+// reports whether anything changed.
+func (t *Tree) SetEffort(id string, e store.Effort) (bool, error) {
+	if !e.Valid() {
+		_, err := store.ParseEffort(string(e))
+		return false, err
+	}
+	tk, err := t.mustExist(id)
+	if err != nil {
+		return false, err
+	}
+	if tk.Effort == e {
+		return false, nil
+	}
+	err = t.apply(func() error {
+		tk.Effort = e
+		t.touch(id)
+		return nil
+	})
+	return err == nil, err
+}

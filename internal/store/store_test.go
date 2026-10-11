@@ -18,19 +18,19 @@ func TestRoundTrip(t *testing.T) {
 		name string
 		in   Ticket
 	}{
-		{"minimal", Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "T"}},
-		{"full", Ticket{ID: "fanir7", Status: StatusInProgress, Type: TypeTask, BlockedBy: []string{"lovet2"},
+		{"minimal", Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "T"}},
+		{"full", Ticket{ID: "fanir7", Status: StatusInProgress, Type: TypeTask, Effort: EffortNormal, BlockedBy: []string{"lovet2"},
 			Children: []string{"kamop3", "ritus9"}, Created: ts, Title: "Add parser", Body: "Some text\n\n## Note\nmore\n"}},
-		{"body no trailing newline", Ticket{ID: "a1", Status: StatusClosed, Type: TypeTask, Created: ts, Title: "T", Body: "x"}},
-		{"body leading blank lines", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "T", Body: "\n\nx\n"}},
-		{"body only newline", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "T", Body: "\n"}},
-		{"body with fences", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "T", Body: "---\nid: x\n---\n# H\n"}},
-		{"title with colon and hash", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "fix: # thing"}},
-		{"unicode", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "héllo ✓", Body: "日本語\n"}},
-		{"bug", Ticket{ID: "a1", Status: StatusOpen, Type: TypeBug, Created: ts, Title: "T"}},
-		{"feature", Ticket{ID: "a1", Status: StatusOpen, Type: TypeFeature, Created: ts, Title: "T"}},
-		{"chore", Ticket{ID: "a1", Status: StatusOpen, Type: TypeChore, Created: ts, Title: "T"}},
-		{"non-utc created", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Created: ts.In(time.FixedZone("x", 3600)), Title: "T"}},
+		{"body no trailing newline", Ticket{ID: "a1", Status: StatusClosed, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "T", Body: "x"}},
+		{"body leading blank lines", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "T", Body: "\n\nx\n"}},
+		{"body only newline", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "T", Body: "\n"}},
+		{"body with fences", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "T", Body: "---\nid: x\n---\n# H\n"}},
+		{"title with colon and hash", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "fix: # thing"}},
+		{"unicode", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "héllo ✓", Body: "日本語\n"}},
+		{"bug", Ticket{ID: "a1", Status: StatusOpen, Type: TypeBug, Effort: EffortHard, Created: ts, Title: "T"}},
+		{"feature", Ticket{ID: "a1", Status: StatusOpen, Type: TypeFeature, Effort: EffortEasy, Created: ts, Title: "T"}},
+		{"chore", Ticket{ID: "a1", Status: StatusOpen, Type: TypeChore, Effort: EffortNormal, Created: ts, Title: "T"}},
+		{"non-utc created", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts.In(time.FixedZone("x", 3600)), Title: "T"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,6 +50,9 @@ func TestRoundTrip(t *testing.T) {
 			if want.Type == "" {
 				want.Type = TypeTask
 			}
+			if want.Effort == "" {
+				want.Effort = EffortNormal
+			}
 			if !reflect.DeepEqual(got, &want) {
 				t.Errorf("got %+v, want %+v", got, &want)
 			}
@@ -58,12 +61,12 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestMarshalFormat(t *testing.T) {
-	data, err := Marshal(&Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, BlockedBy: []string{"lovet2"},
+	data, err := Marshal(&Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, BlockedBy: []string{"lovet2"},
 		Children: []string{"kamop3", "ritus9"}, Created: ts, Title: "Title", Body: "Body\n"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "---\nid: fanir7\nstatus: open\ntype: task\nblocked-by: [lovet2]\nchildren: [kamop3, ritus9]\ncreated: 2026-10-05T12:00:00Z\n---\n# Title\n\nBody\n"
+	want := "---\nid: fanir7\nstatus: open\ntype: task\neffort: normal\nblocked-by: [lovet2]\nchildren: [kamop3, ritus9]\ncreated: 2026-10-05T12:00:00Z\n---\n# Title\n\nBody\n"
 	if string(data) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", data, want)
 	}
@@ -135,16 +138,16 @@ func TestMarshalInvalid(t *testing.T) {
 		name string
 		in   Ticket
 	}{
-		{"bad status", Ticket{ID: "a1", Status: "x", Type: TypeTask, Title: "T"}},
-		{"empty id", Ticket{Status: StatusOpen, Type: TypeTask, Title: "T"}},
-		{"path id", Ticket{ID: "a/b", Status: StatusOpen, Type: TypeTask, Title: "T"}},
-		{"reserved id", Ticket{ID: "ROOT", Status: StatusOpen, Type: TypeTask, Title: "T"}},
-		{"multiline title", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Title: "a\nb"}},
-		{"zero created", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Title: "T"}},
+		{"bad status", Ticket{ID: "a1", Status: "x", Type: TypeTask, Effort: EffortNormal, Title: "T"}},
+		{"empty id", Ticket{Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Title: "T"}},
+		{"path id", Ticket{ID: "a/b", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Title: "T"}},
+		{"reserved id", Ticket{ID: "ROOT", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Title: "T"}},
+		{"multiline title", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Title: "a\nb"}},
+		{"zero created", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Title: "T"}},
 		{"empty title", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask}},
 		{"empty type", Ticket{ID: "a1", Status: StatusOpen, Created: ts, Title: "T"}},
 		{"invalid type", Ticket{ID: "a1", Status: StatusOpen, Type: "epic", Created: ts, Title: "T"}},
-		{"blank title", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Title: "  "}},
+		{"blank title", Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Title: "  "}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -240,8 +243,8 @@ func newStore(t *testing.T) *Store {
 
 func TestStoreCRUD(t *testing.T) {
 	s := newStore(t)
-	a := &Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "A", Body: "body\n"}
-	b := &Ticket{ID: "lovet2", Status: StatusClosed, Type: TypeTask, Created: ts, Title: "B"}
+	a := &Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "A", Body: "body\n"}
+	b := &Ticket{ID: "lovet2", Status: StatusClosed, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "B"}
 	for _, tk := range []*Ticket{b, a} {
 		if err := s.Save(tk); err != nil {
 			t.Fatal(err)
@@ -267,7 +270,7 @@ func TestStoreCRUD(t *testing.T) {
 
 func TestSaveAtomic(t *testing.T) {
 	s := newStore(t)
-	tk := &Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "A"}
+	tk := &Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "A"}
 	if err := s.Save(tk); err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +279,7 @@ func TestSaveAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No temp files remain, and an invalid save leaves the old file intact.
-	bad := &Ticket{ID: "fanir7", Status: "bogus", Type: TypeTask, Title: "C"}
+	bad := &Ticket{ID: "fanir7", Status: "bogus", Type: TypeTask, Effort: EffortNormal, Title: "C"}
 	if err := s.Save(bad); err == nil {
 		t.Fatal("expected error")
 	}
@@ -299,7 +302,7 @@ func TestListIgnoresNonTickets(t *testing.T) {
 	s := newStore(t)
 	os.WriteFile(filepath.Join(s.Dir, "notes.txt"), []byte("x"), 0o644)
 	os.Mkdir(filepath.Join(s.Dir, "sub.md"), 0o755)
-	if err := s.Save(&Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "A"}); err != nil {
+	if err := s.Save(&Ticket{ID: "fanir7", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "A"}); err != nil {
 		t.Fatal(err)
 	}
 	ids, err := s.IDs()
@@ -310,7 +313,7 @@ func TestListIgnoresNonTickets(t *testing.T) {
 
 func TestLoadIDMismatch(t *testing.T) {
 	s := newStore(t)
-	data, _ := Marshal(&Ticket{ID: "lovet2", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "A"})
+	data, _ := Marshal(&Ticket{ID: "lovet2", Status: StatusOpen, Type: TypeTask, Effort: EffortNormal, Created: ts, Title: "A"})
 	os.WriteFile(filepath.Join(s.Dir, "fanir7.md"), data, 0o644)
 	if _, err := s.Load("fanir7"); err == nil {
 		t.Error("expected id mismatch error")
@@ -416,8 +419,37 @@ func TestParseType(t *testing.T) {
 	}
 }
 
+func TestMissingEffortIsNormal(t *testing.T) {
+	tk, err := Unmarshal([]byte("---\nid: a1\nstatus: open\ntype: bug\ncreated: 2026-10-05T12:00:00Z\n---\n# T\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Effort != EffortNormal {
+		t.Errorf("effort = %q, want normal", tk.Effort)
+	}
+	if _, err := Marshal(&Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Effort: "medium", Created: ts, Title: "T"}); err == nil {
+		t.Error("expected error for invalid effort")
+	}
+	if _, err := Marshal(&Ticket{ID: "a1", Status: StatusOpen, Type: TypeTask, Created: ts, Title: "T"}); err == nil {
+		t.Error("expected error for empty effort")
+	}
+}
+
+func TestParseEffort(t *testing.T) {
+	for in, want := range map[string]Effort{"easy": EffortEasy, "NORMAL": EffortNormal, " Hard ": EffortHard} {
+		if got, err := ParseEffort(in); err != nil || got != want {
+			t.Errorf("ParseEffort(%q) = %q, %v", in, got, err)
+		}
+	}
+	for _, in := range []string{"", "medium", "x"} {
+		if _, err := ParseEffort(in); err == nil || !strings.Contains(err.Error(), "easy, normal, hard") {
+			t.Errorf("ParseEffort(%q) err = %v", in, err)
+		}
+	}
+}
+
 func TestValidateRejectsEmptyType(t *testing.T) {
-	tk := Ticket{ID: "a1", Status: StatusOpen, Created: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC), Title: "T"}
+	tk := Ticket{ID: "a1", Status: StatusOpen, Effort: EffortNormal, Created: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC), Title: "T"}
 	if err := tk.Validate(); err == nil {
 		t.Fatal("Validate accepted empty type")
 	}

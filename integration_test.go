@@ -68,7 +68,7 @@ func TestEndToEnd(t *testing.T) {
 	c := run("new", "C", "--under", epic)
 	other := run("new", "Other", "--type", "chore")
 	run("type", other, "bug")
-	if ls := run("ls"); !strings.Contains(ls, other+"  [bug] Other") {
+	if ls := run("ls"); !strings.Contains(ls, other+"  [bug/normal] Other") {
 		t.Fatalf("ls should show type:\n%s", ls)
 	}
 

@@ -4,7 +4,7 @@ A minimal ticket tracker built around one idea: **tickets form an ordered tree, 
 
 ## Concepts
 
-- **Ticket**: a unit of work with a title, body, status, type and optional blockers. The type (`task|bug|feature|chore`, default `task`) is pure metadata: it never affects `ready`, status rules, ordering or deps. `epic` is not a type.
+- **Ticket**: a unit of work with a title, body, status, type, effort and optional blockers. The type (`task|bug|feature|chore`, default `task`) and effort (`easy|normal|hard`, default `normal`, how hard the work is expected to be, e.g. for choosing an agent's model) are pure metadata: they never affect `ready`, status rules, ordering or deps. `epic` is not a type.
 - **Tree**: every ticket has at most one parent. Tickets with no parent are *roots*. Roots are ordered, and each ticket's children are ordered.
 - **Epic**: not a type. A ticket is an epic if and only if it has children. Any ticket can have children, at any depth.
 - **Order**: siblings are ordered by their position in the parent's `children` list (roots by `ROOT.md`). Earlier means picked up first. The global order is DFS preorder over roots.
@@ -28,6 +28,7 @@ There is no priority, assignee, links or external-ref. Order and hierarchy repla
 id: fanir7
 status: open            # open | in_progress | closed
 type: task              # task | bug | feature | chore (pure metadata; missing reads as task)
+effort: normal          # easy | normal | hard (pure metadata; missing reads as normal)
 blocked-by: [lovet2]
 children: [kamop3, ritus9]   # ordered; first is picked up first
 created: 2026-10-05T12:00:00Z
@@ -37,6 +38,7 @@ created: 2026-10-05T12:00:00Z
 Body text, notes appended as timestamped sections.
 ```
 
+- Frontmatter is parsed strictly: unknown keys make a ticket unreadable. A `tk` binary older than a field (such as `effort`) therefore cannot read tickets written by a newer one; upgrade the binary.
 - The hierarchy is stored **only** in `children` lists and `ROOT.md`. A child does not store its parent; the parent is derived by scanning.
 - Archived tickets live in `.tickets/archive/` (see [Archival](#archival)): flat `<id>.md` files, no `ROOT.md`, created lazily by `tk archive`.
 - IDs are pronounceable five-letter stems followed by a digit 1–9 (e.g. `fanir7`, `igoro8`). The stem is either CVCVC (consonant-vowel-consonant-vowel-consonant) or VCVCV (vowel-consonant-vowel-consonant-vowel), chosen randomly; Q and X are excluded from consonants, and 0 is excluded from digits to avoid confusion with letters. Partial matching: exact match first, then substring; error on zero or multiple matches.
@@ -67,7 +69,7 @@ Blocking: a ticket is blocked if it, or any ancestor, has an unclosed ticket in 
 blocked: fanir7 "Add parser" waits on lovet2 "Pick schema" (2.4.1, open)
 ```
 
-Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] Fix crash`. Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf is blocked.
+Output on success is `<id> <position> [<type>/<effort>] <title>`, e.g. `fanir7 1.2 [bug/hard] Fix crash`. Exit codes: `0` a ready ticket was printed, `1` nothing left to do, `2` top leaf is blocked.
 
 ## Dependencies (`blocked-by`)
 
@@ -82,10 +84,11 @@ Output on success is `<id> <position> [<type>] <title>`, e.g. `fanir7 1.2 [bug] 
 
 | Command | Behaviour |
 |---|---|
-| `tk new "Title" [--type T] [--under P] [--at N] [-b body \| -b - \| -F file]` | Create a ticket; `--type` is `task` (default), `bug`, `feature` or `chore`. Default: append as last child of `P`, or last root. |
-| `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Each line shows `[type]` before the title. Closed subtrees hidden unless `--all`. Positions are display only. Walks from `ROOT.md`, so unreachable tickets (orphans) are not shown; when any exist, a one-line warning goes to stderr pointing at `tk fsck`. |
-| `tk show <id>` | Title, body, status, type, blockers, children, position. |
+| `tk new "Title" [--type T] [-e\|--effort E] [--under P] [--at N] [-b body \| -b - \| -F file]` | Create a ticket; `--type` is `task` (default), `bug`, `feature` or `chore`; `--effort` is `easy`, `normal` (default) or `hard`. Default: append as last child of `P`, or last root. |
+| `tk ls [--all] [<id>]` | Render the tree as an outline with positions (e.g. `2.1.3`). Each line shows `[type/effort]` before the title. Closed subtrees hidden unless `--all`. Positions are display only. Walks from `ROOT.md`, so unreachable tickets (orphans) are not shown; when any exist, a one-line warning goes to stderr pointing at `tk fsck`. |
+| `tk show <id>` | Title, body, status, type, effort, blockers, children, position. |
 | `tk type <id> <type>` | Set the type (case-insensitive, stored lowercase). Works on any status; setting the current type is a silent no-op; no status or ancestor effects. |
+| `tk effort <id> <easy\|normal\|hard>` | Set the effort, with the same rules as `tk type`. |
 | `tk edit <id>` | Open in `$EDITOR`. Prints `unchanged <id>` and writes nothing if the file was saved as is. Changing `status`, `children` or `blocked-by` is refused and nothing is saved; use `start`/`close`/`reopen`, `mv` and `dep`/`undep`, which apply the tree rules. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id>` / `tk reopen <id>` | Status transitions, with the rules above. |

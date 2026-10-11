@@ -39,7 +39,7 @@ func build(t *testing.T, outline string) (*Tree, *store.Store) {
 		if depth > 0 {
 			parent = stack[depth-1]
 		}
-		tk := &store.Ticket{ID: id, Status: store.Status(status), Type: store.TypeTask, Created: time.Now().UTC(), Title: "T " + id}
+		tk := &store.Ticket{ID: id, Status: store.Status(status), Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: "T " + id}
 		if err := tr.Add(tk, parent, Place{}); err != nil {
 			t.Fatalf("add %s: %v", id, err)
 		}
@@ -257,7 +257,7 @@ func TestStatus(t *testing.T) {
 
 func TestAdd(t *testing.T) {
 	newTk := func(id string) *store.Ticket {
-		return &store.Ticket{ID: id, Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: id}
+		return &store.Ticket{ID: id, Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: id}
 	}
 	tests := []struct {
 		name   string
@@ -645,6 +645,9 @@ func TestFsck(t *testing.T) {
 			if tk.Type == "" {
 				tk.Type = store.TypeTask
 			}
+			if tk.Effort == "" {
+				tk.Effort = store.EffortNormal
+			}
 			if tk.Status == "" {
 				tk.Status = store.StatusOpen
 			}
@@ -724,7 +727,7 @@ func TestCorruptRootRefusesMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr = reloaded(t, st)
-	extra := &store.Ticket{ID: "x", Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: "x"}
+	extra := &store.Ticket{ID: "x", Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: "x"}
 	ops := map[string]func() error{
 		"add":    func() error { return tr.Add(extra, "", Place{}) },
 		"move":   func() error { return tr.Move("a", "b", Place{}) },
@@ -801,7 +804,7 @@ func TestInProgressAncestorResetByOpenWork(t *testing.T) {
 	if status(tr, "g") != store.StatusInProgress {
 		t.Fatal("g should be in_progress")
 	}
-	tk := &store.Ticket{ID: "n", Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: "n"}
+	tk := &store.Ticket{ID: "n", Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: "n"}
 	if err := tr.Add(tk, "p", Place{}); err != nil {
 		t.Fatal(err)
 	}
@@ -843,6 +846,30 @@ func TestSetType(t *testing.T) {
 		t.Error("expected error for invalid type")
 	}
 	if _, err := tr.SetType("nope", store.TypeChore); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestSetEffort(t *testing.T) {
+	tr, st := build(t, "a:closed\n  a1:closed")
+	ok, err := tr.SetEffort("a1", store.EffortHard)
+	if err != nil || !ok {
+		t.Fatalf("SetEffort = %v, %v", ok, err)
+	}
+	r := reloaded(t, st)
+	if r.Get("a1").Effort != store.EffortHard {
+		t.Errorf("effort = %q", r.Get("a1").Effort)
+	}
+	if r.Get("a").Status != store.StatusClosed || r.Get("a1").Status != store.StatusClosed {
+		t.Error("set-effort changed status")
+	}
+	if ok, err := tr.SetEffort("a1", store.EffortHard); err != nil || ok {
+		t.Errorf("same effort = %v, %v; want silent no-op", ok, err)
+	}
+	if _, err := tr.SetEffort("a1", "medium"); err == nil {
+		t.Error("expected error for invalid effort")
+	}
+	if _, err := tr.SetEffort("nope", store.EffortEasy); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v", err)
 	}
 }

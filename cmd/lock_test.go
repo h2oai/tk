@@ -39,7 +39,7 @@ func TestCommandsTakeTheLock(t *testing.T) {
 	e := newEnv(t)
 	id := e.newT("A")
 	for _, args := range [][]string{
-		{"new", "B"}, {"start", id}, {"type", id, "bug"}, {"note", id, "hi"},
+		{"new", "B"}, {"start", id}, {"type", id, "bug"}, {"effort", id, "hard"}, {"note", id, "hi"},
 		{"ls"}, {"show", id}, {"ready"}, {"fsck"},
 	} {
 		if !waits(t, e, args...) {

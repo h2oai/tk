@@ -29,7 +29,7 @@ func newModel(t *testing.T, lines ...string) (*Model, *store.Store) {
 		if parent == "-" {
 			parent = ""
 		}
-		tk := &store.Ticket{ID: f[0], Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: "T " + f[0]}
+		tk := &store.Ticket{ID: f[0], Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: "T " + f[0]}
 		if err := tr.Add(tk, parent, tree.Place{}); err != nil {
 			t.Fatal(err)
 		}
@@ -155,7 +155,7 @@ func TestErrorInStatusLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"a", "b"} {
-		tk := &store.Ticket{ID: id, Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: id}
+		tk := &store.Ticket{ID: id, Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: id}
 		if err := tr.Add(tk, "", tree.Place{}); err != nil {
 			t.Fatal(err)
 		}
@@ -199,7 +199,7 @@ func TestReorderReloadsAndLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &store.Ticket{ID: "d", Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC(), Title: "T d"}
+	d := &store.Ticket{ID: "d", Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: "T d"}
 	if err := other.Add(d, "", tree.Place{}); err != nil {
 		t.Fatal(err)
 	}

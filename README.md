@@ -54,29 +54,29 @@ Reorder with `tk mv`, `tk up`, `tk down`, `tk top`, `tk bottom`; the next `tk re
 
 ## Roadmap
 
-`tk ls --all` displays an auto-numbered hierarchical list — effectively the roadmap the agent reads to know where it is, where it's going, and how to get there. Markers: `[ ]` open, `[~]` in progress, `[x]` closed; `[type]` is the ticket's type.
+`tk ls --all` displays an auto-numbered hierarchical list — effectively the roadmap the agent reads to know where it is, where it's going, and how to get there. Markers: `[ ]` open, `[~]` in progress, `[x]` closed; `[type/effort]` are the ticket's type and expected effort (`easy`, `normal` or `hard`).
 
 For example:
 
 ```text
-1 [ ] inusa1  [feature] Phase 1 — Walking skeleton
-  1.1 [x] wujif1  [chore] Scaffold package, build, and fixture isolation
-  1.2 [x] epuwo6  [feature] Tracer bullet: lint() to disallowed-file to renderReport()
-  1.3 [x] suzos5  [task] Node smoke test for the built package
-  1.4 [x] bepin4  [feature] Walker and first rule 1 violations (debugger, var)
-  1.5 [x] muwes8  [feature] Nested and overlapping violations (class)
-  1.6 [x] jiben3  [feature] Render multi-line ranges, elision, and output cap
-  1.7 [~] agovi4  [chore] Phase 1 coverage review
-  1.8 [ ] fegez4  [chore] Phase 1 DRY review
-2 [ ] fosin9  [feature] Phase 2 — Rule 1
-  2.1 [ ] vagew8  [chore] Decide on destructured constructor and __proto__ keys
-  2.2 [ ] topiv9  [bug] Treat bodiless overload signatures as type-level
-  2.3 [ ] nefir9  [chore] Decide on import x = N.y entity aliases
-  2.4 [ ] cujuf3  [feature] Decorators, generators/yield, and with
-  2.5 [ ] ugolu5  [feature] Multi-declarator declarations and comma expressions
-  2.6 [ ] necup3  [feature] enum and namespace-like declarations
-  2.7 [ ] uvuso5  [feature] Object-literal accessors and this/arguments/new.target/import.meta
-  2.8 [ ] dezuz5  [feature] Member access named constructor, __proto__, prototype
+1 [ ] inusa1  [feature/normal] Phase 1 — Walking skeleton
+  1.1 [x] wujif1  [chore/easy] Scaffold package, build, and fixture isolation
+  1.2 [x] epuwo6  [feature/normal] Tracer bullet: lint() to disallowed-file to renderReport()
+  1.3 [x] suzos5  [task/normal] Node smoke test for the built package
+  1.4 [x] bepin4  [feature/normal] Walker and first rule 1 violations (debugger, var)
+  1.5 [x] muwes8  [feature/normal] Nested and overlapping violations (class)
+  1.6 [x] jiben3  [feature/hard] Render multi-line ranges, elision, and output cap
+  1.7 [~] agovi4  [chore/normal] Phase 1 coverage review
+  1.8 [ ] fegez4  [chore/normal] Phase 1 DRY review
+2 [ ] fosin9  [feature/normal] Phase 2 — Rule 1
+  2.1 [ ] vagew8  [chore/normal] Decide on destructured constructor and __proto__ keys
+  2.2 [ ] topiv9  [bug/hard] Treat bodiless overload signatures as type-level
+  2.3 [ ] nefir9  [chore/easy] Decide on import x = N.y entity aliases
+  2.4 [ ] cujuf3  [feature/normal] Decorators, generators/yield, and with
+  2.5 [ ] ugolu5  [feature/normal] Multi-declarator declarations and comma expressions
+  2.6 [ ] necup3  [feature/normal] enum and namespace-like declarations
+  2.7 [ ] uvuso5  [feature/normal] Object-literal accessors and this/arguments/new.target/import.meta
+  2.8 [ ] dezuz5  [feature/normal] Member access named constructor, __proto__, prototype
 ```
 
 ## Interactive reordering
@@ -98,7 +98,7 @@ If the chosen ticket (or any ancestor) waits on an unclosed blocker, `ready` sto
 blocked: fanir7 "Add parser" waits on lovet2 "Pick schema" (2.4.1, open)
 ```
 
-Exit codes: `0` a ticket was printed (`<id> <position> [<type>] <title>`), `1` nothing left to do, `2` the top leaf is blocked. Fix a block by closing the blocker, `tk undep`, or reordering.
+Exit codes: `0` a ticket was printed (`<id> <position> [<type>/<effort>] <title>`), `1` nothing left to do, `2` the top leaf is blocked. Fix a block by closing the blocker, `tk undep`, or reordering.
 
 **Exit codes of every command**: `0` success, `1` `ready`: nothing left to do (also `fsck`: problems found), `2` `ready`: top leaf blocked, `3` any other error (unknown or ambiguous id, missing directory, refused operation, usage error, unreadable tickets). Only `0`, `1` and `2` from `ready` carry meaning; treat `3` as a failure, never as "done".
 
@@ -116,10 +116,11 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>] <title>`), `1` n
 
 | Command | Behaviour |
 |---|---|
-| `tk new <title> [--type T] [--under P] [--at N \| --before X \| --after X] [-b body \| -b - \| -F file]` | Create a ticket, print its id. `--type` is `task` (default), `bug`, `feature` or `chore`. Default: last child of `P`, or last root. |
-| `tk ls [--all] [id]` | Outline with positions (e.g. `2.1.3`) and each ticket's `[type]`. Closed subtrees hidden unless `--all`. |
-| `tk show <id>` | Title, body, status, type, blockers, children, position. |
+| `tk new <title> [--type T] [-e\|--effort E] [--under P] [--at N \| --before X \| --after X] [-b body \| -b - \| -F file]` | Create a ticket, print its id. `--type` is `task` (default), `bug`, `feature` or `chore`; `--effort` is `easy`, `normal` (default) or `hard`. Default: last child of `P`, or last root. |
+| `tk ls [--all] [id]` | Outline with positions (e.g. `2.1.3`) and each ticket's `[type/effort]`. Closed subtrees hidden unless `--all`. |
+| `tk show <id>` | Title, body, status, type, effort, blockers, children, position. |
 | `tk type <id> <task\|bug\|feature\|chore>` | Set the ticket's type. |
+| `tk effort <id> <easy\|normal\|hard>` | Set the ticket's expected effort. |
 | `tk edit <id>` | Open in `$EDITOR` (writes nothing if saved unchanged). |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id> [--force]` / `tk reopen <id>` | Status transitions. |
@@ -148,6 +149,7 @@ Ids are matched by substring (exact match first; error on zero or multiple match
 id: fanir7
 status: open
 type: task
+effort: normal
 blocked-by: [lovet2]
 children: [kamop3, ritus9]
 created: 2026-10-05T12:00:00Z

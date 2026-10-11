@@ -78,12 +78,45 @@ func ParseType(s string) (Type, error) {
 	return ty, nil
 }
 
+// Effort is how hard a ticket is expected to be, for routing work to an
+// agent. It is pure metadata.
+type Effort string
+
+const (
+	EffortEasy   Effort = "easy"
+	EffortNormal Effort = "normal"
+	EffortHard   Effort = "hard"
+)
+
+// EffortNames lists the valid efforts, for messages.
+const EffortNames = "easy, normal, hard"
+
+// Valid reports whether e is a known effort.
+func (e Effort) Valid() bool {
+	switch e {
+	case EffortEasy, EffortNormal, EffortHard:
+		return true
+	}
+	return false
+}
+
+// ParseEffort converts a string to an Effort, case-insensitively, rejecting
+// unknown values.
+func ParseEffort(s string) (Effort, error) {
+	e := Effort(strings.ToLower(strings.TrimSpace(s)))
+	if !e.Valid() {
+		return "", fmt.Errorf("invalid effort %q (want %s)", s, EffortNames)
+	}
+	return e, nil
+}
+
 // Ticket is a unit of work. Hierarchy is stored only as the ordered Children
 // list; the parent is derived by scanning.
 type Ticket struct {
 	ID        string
 	Status    Status
 	Type      Type
+	Effort    Effort
 	BlockedBy []string
 	Children  []string
 	Created   time.Time
@@ -101,6 +134,9 @@ func (t *Ticket) Validate() error {
 	}
 	if !t.Type.Valid() {
 		return fmt.Errorf("ticket %s: invalid type %q (want %s)", t.ID, t.Type, TypeNames)
+	}
+	if !t.Effort.Valid() {
+		return fmt.Errorf("ticket %s: invalid effort %q (want %s)", t.ID, t.Effort, EffortNames)
 	}
 	if t.Created.IsZero() {
 		return fmt.Errorf("ticket %s: missing created timestamp", t.ID)

@@ -211,7 +211,7 @@ func TestReadyExitCodes(t *testing.T) {
 	b := e.newT("Beta")
 
 	out := e.run("ready")
-	contains(t, out, a+" 1 [task] Alpha")
+	contains(t, out, a+" 1 [task/normal] Alpha")
 
 	// blocked: Alpha waits on Beta.
 	e.block(a, b)
@@ -236,7 +236,7 @@ func TestReadyScope(t *testing.T) {
 	b := e.newT("B")
 	bc := e.newT("BChild", "--under", b)
 	contains(t, e.run("ready"), a)
-	contains(t, e.run("ready", b), bc+" 2.1 [task] BChild")
+	contains(t, e.run("ready", b), bc+" 2.1 [task/normal] BChild")
 }
 
 func TestEdit(t *testing.T) {
@@ -347,8 +347,8 @@ func TestTypes(t *testing.T) {
 	b := e.newT("Plain")
 	contains(t, e.run("show", a), "type:     bug")
 	contains(t, e.run("show", b), "type:     task")
-	contains(t, e.run("ls"), a+"  [bug] Fix crash")
-	contains(t, e.run("ready"), a+" 1 [bug] Fix crash")
+	contains(t, e.run("ls"), a+"  [bug/normal] Fix crash")
+	contains(t, e.run("ready"), a+" 1 [bug/normal] Fix crash")
 
 	_, errs, _ := e.fail("new", "X", "--type", "epic")
 	contains(t, errs, "task, bug, feature, chore")
@@ -367,6 +367,34 @@ func TestTypes(t *testing.T) {
 	}
 	_, errs, _ = e.fail("type", b, "epic")
 	contains(t, errs, "task, bug, feature, chore")
+}
+
+func TestEffort(t *testing.T) {
+	e := newEnv(t)
+	a := e.newT("Fix crash", "--type", "bug", "-e", "hard")
+	b := e.newT("Plain")
+	contains(t, e.run("show", a), "effort:   hard")
+	contains(t, e.run("show", b), "effort:   normal")
+	contains(t, e.run("ls"), a+"  [bug/hard] Fix crash")
+	contains(t, e.run("ready"), a+" 1 [bug/hard] Fix crash")
+
+	_, errs, _ := e.fail("new", "X", "--effort", "medium")
+	contains(t, errs, "easy, normal, hard")
+
+	// Case-insensitive, stored lowercase, works on closed tickets, no-op silent.
+	e.run("close", b)
+	contains(t, e.run("effort", b, "EASY"), "easy")
+	contains(t, e.run("show", b), "effort:   easy")
+	contains(t, e.run("show", b), "status:   closed")
+	if out := e.run("effort", b, "easy"); out != "" {
+		t.Errorf("no-op printed %q", out)
+	}
+	raw, err := os.ReadFile(filepath.Join(e.dir, b+".md"))
+	if err != nil || !strings.Contains(string(raw), "effort: easy\n") {
+		t.Errorf("file: %v\n%s", err, raw)
+	}
+	_, errs, _ = e.fail("effort", b, "medium")
+	contains(t, errs, "easy, normal, hard")
 }
 
 func TestArchive(t *testing.T) {

@@ -17,11 +17,12 @@ go run main.go [command]   # run without building
 
 ### Common operations
 ```bash
-./tk new "Title" [--type T] [--under P] [--at N]   # Create a ticket (prints id)
+./tk new "Title" [--type T] [-e E] [--under P] [--at N]   # Create a ticket (prints id)
 ./tk ls [--all] [id]                    # Outline of the tree with positions
 ./tk show <partial-id>                  # Show ticket details
 ./tk ready [epic]                       # Highest ready leaf (exit 0/1/2, 3 on error)
 ./tk type <id> <task|bug|feature|chore>  # set type
+./tk effort <id> <easy|normal|hard>      # set expected effort
 ./tk start <id> / close <id> [--force] / reopen <id>
 ./tk mv <id> --under P --at N           # also --before/--after/--root; up/down/top/bottom
 ./tk dep <id> <blocker> / undep ...     # blocked-by management
@@ -36,7 +37,7 @@ go run main.go [command]   # run without building
 
 ### Core Concepts
 
-**On-disk layout**: `.tickets/ROOT.md` holds the ordered root ids (`roots: [...]` in frontmatter). Each ticket is `.tickets/<id>.md` with frontmatter `id`, `status` (`open|in_progress|closed`), `type` (`task|bug|feature|chore`, always written; missing reads as `task`; pure metadata, no effect on ready/status/order/deps), `blocked-by` (list of ids), `children` (ordered list of ids) and `created`, followed by a markdown body (`# Title`, text, timestamped notes). The hierarchy is stored **only** in `children` lists and `ROOT.md`; a child does not store its parent, it is derived by scanning.
+**On-disk layout**: `.tickets/ROOT.md` holds the ordered root ids (`roots: [...]` in frontmatter). Each ticket is `.tickets/<id>.md` with frontmatter `id`, `status` (`open|in_progress|closed`), `type` (`task|bug|feature|chore`, always written; missing reads as `task`; pure metadata, no effect on ready/status/order/deps), `effort` (`easy|normal|hard`, always written; missing reads as `normal`; pure metadata like `type`, meant for routing work to an agent), `blocked-by` (list of ids), `children` (ordered list of ids) and `created`, followed by a markdown body (`# Title`, text, timestamped notes). The hierarchy is stored **only** in `children` lists and `ROOT.md`; a child does not store its parent, it is derived by scanning.
 
 **Order**: siblings are ordered by position in the parent's `children` list (roots by `ROOT.md`). Global order is DFS preorder over the roots. A leaf is a ticket with no children; an epic is any ticket that has children (not a type).
 
@@ -44,7 +45,7 @@ go run main.go [command]   # run without building
 
 **Partial ID Matching**: users pass full or partial ids; `Tree.Resolve()` tries an exact match, then substring match, and errors on zero or multiple matches. Positions like `1.2` are display only and are never accepted as arguments.
 
-**Ready semantics** (`internal/tree/ready.go`): if any leaf is `in_progress`, take the first in DFS order; otherwise the first non-closed leaf in DFS order (a non-leaf whose descendants are all closed counts as a leaf). `ready <epic>` scopes to a subtree. A ticket is blocked if it or any ancestor has an unclosed `blocked-by` entry; if the top leaf is blocked, `ready` stops and prints the blocker. Exit codes: `0` printed `<id> <position> [<type>] <title>`, `1` nothing left to do, `2` top leaf blocked (`blocked: ...` on stdout). Any other error exits `3` (`cmd.ExitGeneric`), so 1 never means failure for `ready`; `fsck` exits `1` when it finds problems (`cmd.ExitFsck`).
+**Ready semantics** (`internal/tree/ready.go`): if any leaf is `in_progress`, take the first in DFS order; otherwise the first non-closed leaf in DFS order (a non-leaf whose descendants are all closed counts as a leaf). `ready <epic>` scopes to a subtree. A ticket is blocked if it or any ancestor has an unclosed `blocked-by` entry; if the top leaf is blocked, `ready` stops and prints the blocker. Exit codes: `0` printed `<id> <position> [<type>/<effort>] <title>`, `1` nothing left to do, `2` top leaf blocked (`blocked: ...` on stdout). Any other error exits `3` (`cmd.ExitGeneric`), so 1 never means failure for `ready`; `fsck` exits `1` when it finds problems (`cmd.ExitFsck`).
 
 **Status rules** (`internal/tree/status.go`): leaves hold real status. `start` fails on a non-leaf with unclosed descendants. `close` on a non-leaf fails while any descendant is unclosed; `--force` closes all descendants. Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`; start/reopen/add/move of unclosed work also resets closed and `in_progress` ancestors (`fsck` flags an `in_progress` or `closed` ticket with unclosed descendants). Mutations (`Tree.apply`) refuse with `ErrCorrupt` while any ticket or `ROOT.md` failed to load; ticket frontmatter is parsed strictly, so unknown keys make the ticket unreadable instead of being dropped on save. `undep` fails unless the blocker is currently listed (an exact dangling id is allowed). `rm` refuses if the ticket has children or is anyone's blocker; `--force` deletes the subtree and detaches deps.
 
@@ -62,6 +63,7 @@ go run main.go [command]   # run without building
 - `new.go`, `ls.go`, `show.go`, `edit.go`, `note.go`: create, view, edit, annotate
 - `status.go`: `start`, `close`, `reopen`
 - `type.go`: `type` (calls `Tree.SetType`)
+- `effort.go`: `effort` (calls `Tree.SetEffort`)
 - `ready.go`: `ready` with exit codes 0/1/2 (generic errors exit 3)
 - `move.go`: `mv`, `up`, `down`, `top`, `bottom`
 - `dep.go`: `dep`, `undep`
@@ -85,7 +87,7 @@ go run main.go [command]   # run without building
 - `archive.go`: move a closed subtree to the archive
 - `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations)
 
-**`internal/edit/`**: `$EDITOR` round trip shared by `tk edit` and the TUI. `Start` reads the ticket's raw file (`Tree.Raw`) under a shared lock into a temp file; `Finish` validates it, writes nothing if it is byte-identical (`unchanged`), refuses if the file changed on disk meanwhile, and saves via `Tree.Replace` under an exclusive lock. `Replace` refuses any change to `status`, `children` or `blocked-by` (pointing at `start/close/reopen`, `mv`, `dep/undep`), so edits never bypass the tree rules; title, body, type and `created` are free.
+**`internal/edit/`**: `$EDITOR` round trip shared by `tk edit` and the TUI. `Start` reads the ticket's raw file (`Tree.Raw`) under a shared lock into a temp file; `Finish` validates it, writes nothing if it is byte-identical (`unchanged`), refuses if the file changed on disk meanwhile, and saves via `Tree.Replace` under an exclusive lock. `Replace` refuses any change to `status`, `children` or `blocked-by` (pointing at `start/close/reopen`, `mv`, `dep/undep`), so edits never bypass the tree rules; title, body, type, effort and `created` are free.
 
 **`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: its own markdown formatter rendered with glamour, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. `e` (list or detail view, `edit.go`) is the only way it changes ticket contents: it hands the file to `$EDITOR` through `internal/edit`, the same code as `tk edit`, via `tea.ExecProcess` (tests swap the unexported `Model.exec`). There are no create, delete, status, type or dep keys. Tests drive `Model.Update` in-process.
 
@@ -100,6 +102,8 @@ go run main.go [command]   # run without building
 **Testing**: unit tests in `internal/store` and `internal/tree`; `cmd/*_test.go` run commands in-process; `integration_test.go` at the repo root builds the binary and runs an end-to-end scenario.
 
 ## Implementation Notes
+
+- `AGENT_INSTRUCTIONS.md` is the guide agents read to use `tk`. When a command, flag or output format is added, changed or removed, update it alongside `docs/spec.md` and `README.md`.
 
 - Go modules (`go 1.25.5` in `go.mod`)
 - Dependencies: `spf13/cobra` (CLI), `gopkg.in/yaml.v3` (YAML)

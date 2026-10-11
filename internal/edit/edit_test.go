@@ -20,7 +20,7 @@ func setup(t *testing.T) (*tree.Tree, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tk := &store.Ticket{ID: "aaa", Status: store.StatusOpen, Type: store.TypeTask, Created: time.Now().UTC().Truncate(time.Second), Title: "Alpha"}
+	tk := &store.Ticket{ID: "aaa", Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC().Truncate(time.Second), Title: "Alpha"}
 	if err := tr.Add(tk, "", tree.Place{}); err != nil {
 		t.Fatal(err)
 	}

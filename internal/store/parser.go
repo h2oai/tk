@@ -28,6 +28,7 @@ type frontmatter struct {
 	ID        string    `yaml:"id"`
 	Status    Status    `yaml:"status"`
 	Type      Type      `yaml:"type"`
+	Effort    Effort    `yaml:"effort"`
 	BlockedBy flowList  `yaml:"blocked-by,omitempty"`
 	Children  flowList  `yaml:"children,omitempty"`
 	Created   time.Time `yaml:"created"`
@@ -52,6 +53,7 @@ func Marshal(t *Ticket) ([]byte, error) {
 		ID:        t.ID,
 		Status:    t.Status,
 		Type:      t.Type,
+		Effort:    t.Effort,
 		BlockedBy: t.BlockedBy,
 		Children:  t.Children,
 		Created:   t.Created.UTC(),
@@ -119,10 +121,14 @@ func UnmarshalAt(data []byte, fallback time.Time) (*Ticket, error) {
 	if fm.Type == "" {
 		fm.Type = TypeTask
 	}
+	if fm.Effort == "" {
+		fm.Effort = EffortNormal
+	}
 	t := &Ticket{
 		ID:        fm.ID,
 		Status:    fm.Status,
 		Type:      fm.Type,
+		Effort:    fm.Effort,
 		BlockedBy: fm.BlockedBy,
 		Children:  fm.Children,
 		Created:   fm.Created,
