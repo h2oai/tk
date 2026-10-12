@@ -166,7 +166,7 @@ func (t *Tree) Move(id, parent string, p Place) error {
 	before := depKeys(t.depProblems())
 	return t.apply(func() error {
 		if old != parent {
-			t.adopt(parent, t.hasUnclosed(t.Subtree(id)))
+			t.adopt(parent, !t.SubtreeClosed(id))
 		}
 		t.setSiblings(parent, list)
 		if old != parent {

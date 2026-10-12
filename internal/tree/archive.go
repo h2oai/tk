@@ -28,8 +28,9 @@ func (t *Tree) Archive(id string, force, dryRun bool) ([]*store.Ticket, error) {
 // is not archived yet, as one batch. It returns the newly archived tickets in
 // DFS preorder. With dryRun nothing is changed.
 func (t *Tree) ArchiveClosed(dryRun bool) ([]*store.Ticket, error) {
-	// A ticket qualifies when it and its whole subtree are closed; walking
-	// the preorder backwards sees children before their parent.
+	// A ticket qualifies when SubtreeClosed holds for it. Rather than walk
+	// each subtree, walk the preorder backwards, which sees children before
+	// their parent, and combine each ticket's status with its children's.
 	ok := map[string]bool{}
 	for i := len(t.order) - 1; i >= 0; i-- {
 		id := t.order[i]

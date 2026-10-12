@@ -110,6 +110,22 @@ func TestPositionsAndQueries(t *testing.T) {
 	}
 }
 
+func TestSubtreeClosed(t *testing.T) {
+	tr, _ := build(t, `
+a:closed
+  a1:closed
+b:closed
+  b1:closed
+  b2
+c:closed
+`)
+	for id, want := range map[string]bool{"a": true, "a1": true, "b": false, "b1": true, "b2": false, "c": true} {
+		if got := tr.SubtreeClosed(id); got != want {
+			t.Errorf("SubtreeClosed(%s) = %v, want %v", id, got, want)
+		}
+	}
+}
+
 func TestReady(t *testing.T) {
 	tests := []struct {
 		name    string

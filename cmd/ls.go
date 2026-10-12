@@ -58,17 +58,7 @@ func newLsCmd(app *App) *cobra.Command {
 type filter struct{ all, archived bool }
 
 func (f filter) shows(t *tree.Tree, id string) bool {
-	return (f.archived || !t.IsArchived(id)) && (f.all || !allClosed(t, id))
-}
-
-// allClosed reports whether id and all its descendants are closed.
-func allClosed(t *tree.Tree, id string) bool {
-	for _, s := range t.Subtree(id) {
-		if t.Get(s).Status != store.StatusClosed {
-			return false
-		}
-	}
-	return true
+	return (f.archived || !t.IsArchived(id)) && (f.all || !t.SubtreeClosed(id))
 }
 
 func writeOutline(w io.Writer, t *tree.Tree, id string, depth int, f filter) {

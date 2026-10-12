@@ -254,6 +254,10 @@ func (t *Tree) IsArchived(id string) bool {
 	return tk != nil && tk.Archived
 }
 
+// SubtreeClosed reports whether id and all its descendants are closed.
+// ArchiveClosed computes the same rule for every ticket in one bottom-up pass.
+func (t *Tree) SubtreeClosed(id string) bool { return !t.hasUnclosed(t.Subtree(id)) }
+
 // archivedErr reports ErrArchived for id.
 func archivedErr(id string) error {
 	return fmt.Errorf("%s: %w (tk unarchive %s first)", id, ErrArchived, id)
