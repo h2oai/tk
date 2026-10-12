@@ -1015,6 +1015,78 @@ func TestArchive(t *testing.T) {
 			t.Errorf("fsck: %v", p)
 		}
 	})
+	t.Run("force closes already archived tickets", func(t *testing.T) {
+		tr, st := build(t, "a:closed\n  a1:closed\n  a2:closed\nb")
+		if _, err := tr.Archive("a1", false, false); err != nil {
+			t.Fatal(err)
+		}
+		// A hand edit leaves a1 archived but open.
+		path := filepath.Join(st.Dir, "a1.md")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(strings.Replace(string(data), "status: closed", "status: open", 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := tr.Reload(); err != nil {
+			t.Fatal(err)
+		}
+		if len(tr.Fsck()) == 0 {
+			t.Fatal("fsck misses archived but open")
+		}
+		if _, err := tr.Archive("a", false, false); !errors.Is(err, ErrNotClosed) {
+			t.Errorf("without force: %v", err)
+		}
+		// A dry run reports the same tickets and changes neither flags nor statuses.
+		for _, id := range []string{"a", "a1"} {
+			got, err := tr.Archive(id, true, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := map[string][]string{"a": {"a", "a2"}}[id]; !reflect.DeepEqual(ids(got), want) {
+				t.Errorf("dry run %s = %v, want %v", id, ids(got), want)
+			}
+		}
+		r := reloaded(t, st)
+		if got := archivedIDs(t, st); !reflect.DeepEqual(got, []string{"a1"}) || r.Get("a1").Status != store.StatusOpen {
+			t.Errorf("dry run changed disk: archived %v, a1 %s", got, r.Get("a1").Status)
+		}
+		// Only newly archived tickets are returned, but a1 is closed too.
+		got, err := tr.Archive("a", true, false)
+		if err != nil || !reflect.DeepEqual(ids(got), []string{"a", "a2"}) {
+			t.Fatalf("got %v, %v", ids(got), err)
+		}
+		r = reloaded(t, st)
+		for _, id := range []string{"a", "a1", "a2"} {
+			if tk := r.Get(id); tk.Status != store.StatusClosed || !tk.Archived {
+				t.Errorf("%s = %s archived %v", id, tk.Status, tk.Archived)
+			}
+		}
+		if p := r.Fsck(); len(p) != 0 {
+			t.Errorf("fsck: %v", p)
+		}
+		// Archiving a valid archived subtree again writes nothing: an atomic
+		// save would replace the files.
+		var before []os.FileInfo
+		for _, id := range []string{"a", "a1", "a2"} {
+			fi, err := os.Stat(filepath.Join(st.Dir, id+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			before = append(before, fi)
+		}
+		for _, force := range []bool{false, true} {
+			if got, err := tr.Archive("a", force, false); err != nil || len(got) != 0 {
+				t.Errorf("again (force %v): %v, %v", force, ids(got), err)
+			}
+		}
+		for i, id := range []string{"a", "a1", "a2"} {
+			if fi, err := os.Stat(filepath.Join(st.Dir, id+".md")); err != nil || !os.SameFile(fi, before[i]) {
+				t.Errorf("%s rewritten: %v", id, err)
+			}
+		}
+	})
 	t.Run("refuses corrupt tree", func(t *testing.T) {
 		tr, st := build(t, "a:closed\nb")
 		os.WriteFile(filepath.Join(st.Dir, "c.md"), []byte("garbage"), 0o644)

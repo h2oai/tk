@@ -60,8 +60,9 @@ func (t *Tree) Unarchive(id string, dryRun bool) ([]*store.Ticket, error) {
 }
 
 // setArchived sets the archived flag to on for every ticket in ids (in DFS
-// preorder) whose flag differs, closing them when archiving. It returns the
-// tickets that change.
+// preorder). Archiving also closes every ticket in ids, including ones whose
+// flag is already set (a hand edit can leave an archived ticket open). It
+// returns the tickets whose flag changes.
 func (t *Tree) setArchived(ids []string, on, dryRun bool) ([]*store.Ticket, error) {
 	if err := t.writable(); err != nil {
 		return nil, err
@@ -72,24 +73,26 @@ func (t *Tree) setArchived(ids []string, on, dryRun bool) ([]*store.Ticket, erro
 			set = append(set, tk)
 		}
 	}
-	if dryRun || len(set) == 0 {
+	if dryRun || len(set) == 0 && !(on && t.hasUnclosed(ids)) {
 		return set, nil
 	}
 	// Tickets are saved in the order they are touched. Archive bottom-up and
 	// unarchive top-down, so a save that fails midway never leaves an
 	// archived ticket above a live one.
-	saveOrder := slices.Clone(set)
+	saveOrder := slices.Clone(ids)
 	if on {
 		slices.Reverse(saveOrder)
 	}
 	err := t.apply(func() error {
 		var changed []string
-		for _, tk := range saveOrder {
+		for _, id := range saveOrder {
 			if on {
-				t.setStatus(tk.ID, store.StatusClosed, &changed)
+				t.setStatus(id, store.StatusClosed, &changed)
 			}
-			tk.Archived = on
-			t.touch(tk.ID)
+			if tk := t.tickets[id]; tk.Archived != on {
+				tk.Archived = on
+				t.touch(id)
+			}
 		}
 		return nil
 	})
