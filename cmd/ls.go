@@ -13,7 +13,7 @@ import (
 func init() { register(newLsCmd) }
 
 func newLsCmd(app *App) *cobra.Command {
-	var all bool
+	var all, archived bool
 	c := &cobra.Command{
 		Use:         "ls [id]",
 		Annotations: map[string]string{lockAnnotation: lockShared},
@@ -32,10 +32,14 @@ func newLsCmd(app *App) *cobra.Command {
 				}
 				roots = []string{id}
 			}
+			f := filter{all: all || archived, archived: archived}
+			if len(args) == 1 && !f.archived && t.IsArchived(roots[0]) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s is archived; use --archived to show it\n", roots[0])
+			}
 			w := cmd.OutOrStdout()
 			for _, id := range roots {
-				if t.Get(id) != nil && (all || len(args) == 1 || !allClosed(t, id)) {
-					writeOutline(w, t, id, 0, all)
+				if t.Get(id) != nil && (len(args) == 1 && !t.IsArchived(id) || f.shows(t, id)) {
+					writeOutline(w, t, id, 0, f)
 				}
 			}
 			if n := len(t.Orphans()); n > 0 {
@@ -45,7 +49,16 @@ func newLsCmd(app *App) *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&all, "all", false, "include closed subtrees")
+	c.Flags().BoolVar(&archived, "archived", false, "include archived tickets (implies --all)")
 	return c
+}
+
+// filter says which subtrees ls prints: closed ones only with all, archived
+// ones only with archived.
+type filter struct{ all, archived bool }
+
+func (f filter) shows(t *tree.Tree, id string) bool {
+	return (f.archived || !t.IsArchived(id)) && (f.all || !allClosed(t, id))
 }
 
 // allClosed reports whether id and all its descendants are closed.
@@ -58,16 +71,16 @@ func allClosed(t *tree.Tree, id string) bool {
 	return true
 }
 
-func writeOutline(w io.Writer, t *tree.Tree, id string, depth int, all bool) {
+func writeOutline(w io.Writer, t *tree.Tree, id string, depth int, f filter) {
 	tk := t.Get(id)
-	line := fmt.Sprintf("%s%s %s %s  %s", strings.Repeat("  ", depth), t.Position(id), tk.Status.Marker(), id, titleWithType(tk))
+	line := fmt.Sprintf("%s%s %s %s  %s", strings.Repeat("  ", depth), t.Position(id), tk.Marker(), id, titleWithType(tk))
 	if open := openBlockers(t, tk); len(open) > 0 {
 		line += "  <- " + strings.Join(open, ", ")
 	}
 	fmt.Fprintln(w, line)
 	for _, c := range t.Children(id) {
-		if all || !allClosed(t, c) {
-			writeOutline(w, t, c, depth+1, all)
+		if f.shows(t, c) {
+			writeOutline(w, t, c, depth+1, f)
 		}
 	}
 }

@@ -11,7 +11,7 @@ tk note <id> "..."               # record progress / decisions
 tk close <id>                    # finish, then tk ready again
 tk new "Title" [--type bug|feature|chore] [--effort easy|normal|hard] [--under P] [--before|--after <o> | --at N]   # prints id
 tk effort <id> easy|normal|hard  # re-estimate
-tk ls [--all] [id]               # outline with positions
+tk ls [--all] [--archived] [id]  # outline with positions
 tk dep <id> <blocker> / undep <id> <blocker>   # blocked-by
 tk mv <id> --before|--after <o> / --under P [--at N] / --root; up/down/top/bottom
 ```
@@ -36,6 +36,8 @@ EOF
 - `close <epic>` fails while descendants are open; `--force` closes them all.
 - Effort (`easy|normal|hard`, default `normal`) is a hint for choosing a model or effort level; it
   never changes what `tk ready` returns.
+- Archived tickets (`[a]`, position `-`) are hidden from `tk ls` unless `--archived`, and can't
+  be started or reopened; `tk unarchive <id>` first.
 - Never run `tk tui` (human-only). Positions are display only; pass ids.
 
 ### Critical Rules

@@ -18,6 +18,7 @@ const (
 	KindCycle      = "cycle"
 	KindDep        = "dep"
 	KindStatus     = "status"
+	KindArchived   = "archived"
 )
 
 // Problem is one integrity violation.
@@ -78,6 +79,20 @@ func (t *Tree) Fsck() []Problem {
 	for _, id := range ids {
 		if st := t.tickets[id].Status; (st == store.StatusClosed || st == store.StatusInProgress) && t.hasUnclosed(t.Descendants(id)) {
 			out = append(out, Problem{KindStatus, id, string(st) + " but has descendants that are not closed", nil})
+		}
+	}
+	for _, id := range ids {
+		tk := t.tickets[id]
+		if !tk.Archived {
+			continue
+		}
+		if tk.Status != store.StatusClosed {
+			out = append(out, Problem{KindArchived, id, "archived but " + string(tk.Status) + " (close it, or tk unarchive " + id + ")", nil})
+		}
+		for _, d := range t.Descendants(id) {
+			if !t.tickets[d].Archived {
+				out = append(out, Problem{KindArchived, id, "archived but descendant " + d + " is not (tk archive " + id + " or tk unarchive " + d + ")", nil})
+			}
 		}
 	}
 	return out

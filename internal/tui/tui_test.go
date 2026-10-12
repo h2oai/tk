@@ -340,3 +340,25 @@ func TestEnterOnEmptyListAndVanishedTicket(t *testing.T) {
 var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 func stripANSI(s string) string { return ansi.ReplaceAllString(s, "") }
+
+func TestArchivedHidden(t *testing.T) {
+	m, st := newModel(t, "a -", "x a", "a1 a", "b -")
+	if _, err := m.t.Archive("x", true, false); err != nil {
+		t.Fatal(err)
+	}
+	m.rebuild()
+	if got := order(m); got != "a -a1 b" {
+		t.Fatalf("rows = %q", got)
+	}
+	press(m, "j", "K") // a1 is first among shown siblings: a no-op
+	if got := m.t.Get("a").Children; strings.Join(got, " ") != "x a1" || m.status != "" {
+		t.Errorf("children = %v, status %q", got, m.status)
+	}
+	press(m, "J") // b is the only shown sibling below a; a1 stays last
+	if got := m.t.Get("a").Children; strings.Join(got, " ") != "x a1" || m.status != "" {
+		t.Errorf("children = %v, status %q", got, m.status)
+	}
+	if got := order(reload(t, st)); got != "a -a1 b" {
+		t.Errorf("reloaded rows = %q", got)
+	}
+}

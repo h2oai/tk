@@ -54,7 +54,7 @@ Reorder with `tk mv`, `tk up`, `tk down`, `tk top`, `tk bottom`; the next `tk re
 
 ## Roadmap
 
-`tk ls --all` displays an auto-numbered hierarchical list — effectively the roadmap the agent reads to know where it is, where it's going, and how to get there. Markers: `[ ]` open, `[~]` in progress, `[x]` closed; `[type/effort]` are the ticket's type and expected effort (`easy`, `normal` or `hard`).
+`tk ls --all` displays an auto-numbered hierarchical list — effectively the roadmap the agent reads to know where it is, where it's going, and how to get there. Markers: `[ ]` open, `[~]` in progress, `[x]` closed, `[a]` archived (with `--archived`); `[type/effort]` are the ticket's type and expected effort (`easy`, `normal` or `hard`).
 
 For example:
 
@@ -117,7 +117,7 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>/<effort>] <title>
 | Command | Behaviour |
 |---|---|
 | `tk new <title> [--type T] [-e\|--effort E] [--under P] [--at N \| --before X \| --after X] [-b body \| -b - \| -F file]` | Create a ticket, print its id. `--type` is `task` (default), `bug`, `feature` or `chore`; `--effort` is `easy`, `normal` (default) or `hard`. Default: last child of `P`, or last root. |
-| `tk ls [--all] [id]` | Outline with positions (e.g. `2.1.3`) and each ticket's `[type/effort]`. Closed subtrees hidden unless `--all`. |
+| `tk ls [--all] [--archived] [id]` | Outline with positions (e.g. `2.1.3`) and each ticket's `[type/effort]`. Closed subtrees hidden unless `--all`; archived tickets hidden unless `--archived` (implies `--all`). |
 | `tk show <id>` | Title, body, status, type, effort, blockers, children, position. |
 | `tk type <id> <task\|bug\|feature\|chore>` | Set the ticket's type. |
 | `tk effort <id> <easy\|normal\|hard>` | Set the ticket's expected effort. |
@@ -130,8 +130,9 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>/<effort>] <title>
 | `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `Enter` view ticket (`Esc` back), `e` edit in `$EDITOR`, `q` quit. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. `undep` fails (exit 3) if the blocker is not currently listed. |
 | `tk rm <id> [--force]` | Refuses if the ticket has children or blocks others; `--force` deletes the subtree and detaches deps. |
-| `tk archive <id> [--force]` | Move a fully closed subtree into `.tickets/archive/` (`--force` closes it first). Refused while a `blocked-by` edge crosses the subtree boundary. One-way: no command reads the archive back. |
-| `tk archive --all` | Archive every fully closed subtree, skipping (and reporting on stderr) those still linked to live tickets by `blocked-by`. `-n`/`--dry-run` on either form prints what would move. |
+| `tk archive <id> [--force]` | Mark a fully closed subtree `archived: true` (`--force` closes it first). Files stay in `.tickets/` and keep their place in the tree; `ls`, the TUI and positions skip them, and `start`/`reopen` refuse them. |
+| `tk archive --all` | Archive every fully closed subtree. `-n`/`--dry-run` on either form prints what would change. |
+| `tk unarchive <id>` | Clear the flag on the subtree and its archived ancestors (also takes `-n`). |
 | `tk fsck` | Verify integrity (orphans, duplicate parents, dangling ids, cycles, dep rule violations); exit 1 on problems, including unreadable tickets (unknown frontmatter keys, corrupt `ROOT.md`). Every command that modifies tickets refuses to run while any ticket or `ROOT.md` is unreadable. |
 
 Ids are matched by substring (exact match first; error on zero or multiple matches). Positions such as `1.2` are display only and never accepted as arguments, because they shift on reorder. Free-form text (body, notes) can be given inline, on stdin with `-`, or from a file with `-F`. Use `--dir` to change the tickets directory (default `.tickets`).

@@ -29,6 +29,7 @@ type frontmatter struct {
 	Status    Status    `yaml:"status"`
 	Type      Type      `yaml:"type"`
 	Effort    Effort    `yaml:"effort"`
+	Archived  bool      `yaml:"archived,omitempty"`
 	BlockedBy flowList  `yaml:"blocked-by,omitempty"`
 	Children  flowList  `yaml:"children,omitempty"`
 	Created   time.Time `yaml:"created"`
@@ -54,6 +55,7 @@ func Marshal(t *Ticket) ([]byte, error) {
 		Status:    t.Status,
 		Type:      t.Type,
 		Effort:    t.Effort,
+		Archived:  t.Archived,
 		BlockedBy: t.BlockedBy,
 		Children:  t.Children,
 		Created:   t.Created.UTC(),
@@ -129,6 +131,7 @@ func UnmarshalAt(data []byte, fallback time.Time) (*Ticket, error) {
 		Status:    fm.Status,
 		Type:      fm.Type,
 		Effort:    fm.Effort,
+		Archived:  fm.Archived,
 		BlockedBy: fm.BlockedBy,
 		Children:  fm.Children,
 		Created:   fm.Created,

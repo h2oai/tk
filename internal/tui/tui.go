@@ -57,10 +57,13 @@ func Run(t *tree.Tree, lock Locker) error {
 }
 
 // rebuild recomputes the rows from the tree, keeping the cursor in range.
+// Archived tickets are left out.
 func (m *Model) rebuild() {
 	m.rows = m.rows[:0]
 	for _, id := range m.t.Order() {
-		m.rows = append(m.rows, row{id, len(m.t.Ancestors(id))})
+		if !m.t.IsArchived(id) {
+			m.rows = append(m.rows, row{id, len(m.t.Ancestors(id))})
+		}
 	}
 	m.cursor = max(0, min(m.cursor, len(m.rows)-1))
 }
@@ -183,7 +186,7 @@ func (m *Model) View() string {
 		if i == m.cursor {
 			cur = "> "
 		}
-		fmt.Fprintf(&b, "%s%s%s %s %s  [%s] %s\n", cur, strings.Repeat("  ", r.depth), m.t.Position(r.id), tk.Status.Marker(), r.id, tk.Type, tk.Title)
+		fmt.Fprintf(&b, "%s%s%s %s %s  [%s] %s\n", cur, strings.Repeat("  ", r.depth), m.t.Position(r.id), tk.Marker(), r.id, tk.Type, tk.Title)
 	}
 	if len(m.rows) == 0 {
 		b.WriteString("no tickets\n")

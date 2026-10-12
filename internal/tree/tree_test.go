@@ -925,58 +925,54 @@ func TestIndentRechecksDeps(t *testing.T) {
 	}
 }
 
+func ids(tks []*store.Ticket) []string {
+	var out []string
+	for _, tk := range tks {
+		out = append(out, tk.ID)
+	}
+	return out
+}
+
+// archivedIDs lists the archived tickets on disk, sorted.
+func archivedIDs(t *testing.T, st *store.Store) []string {
+	t.Helper()
+	r := reloaded(t, st)
+	var out []string
+	for _, id := range r.sortedIDs() {
+		if r.Get(id).Archived {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 func TestArchive(t *testing.T) {
-	archived := func(t *testing.T, st *store.Store) []string {
-		t.Helper()
-		entries, _ := os.ReadDir(st.ArchiveDir())
-		var names []string
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		return names
-	}
-	ids := func(tks []*store.Ticket) []string {
-		var out []string
-		for _, tk := range tks {
-			out = append(out, tk.ID)
-		}
-		return out
-	}
 	t.Run("closed subtree", func(t *testing.T) {
 		tr, st := build(t, "a\n  a1:closed\n  a2:closed\n    a2y:closed\n    a2x:closed\nb")
-		if err := tr.AddDep("a2x", "a2y"); err != nil { // internal edge moves along
-			t.Fatal(err)
-		}
-		before, _ := os.ReadFile(filepath.Join(st.Dir, "a2x.md"))
 		got, err := tr.Archive("a2", false, false)
 		if err != nil || !reflect.DeepEqual(ids(got), []string{"a2", "a2y", "a2x"}) {
 			t.Fatalf("got %v, %v", ids(got), err)
 		}
-		if !reflect.DeepEqual(archived(t, st), []string{"a2.md", "a2x.md", "a2y.md"}) {
-			t.Errorf("archive = %v", archived(t, st))
-		}
-		if after, _ := os.ReadFile(filepath.Join(st.ArchiveDir(), "a2x.md")); !reflect.DeepEqual(before, after) {
-			t.Errorf("a2x changed:\n%s\nvs\n%s", before, after)
+		if got := archivedIDs(t, st); !reflect.DeepEqual(got, []string{"a2", "a2x", "a2y"}) {
+			t.Errorf("archived = %v", got)
 		}
 		for _, r := range []*Tree{tr, reloaded(t, st)} {
-			if outline(r) != "a\n a1\nb\n" || r.Get("a2") != nil {
-				t.Errorf("live tree:\n%s", outline(r))
+			if outline(r) != "a\n a1\n a2\n  a2y\n  a2x\nb\n" {
+				t.Errorf("tree changed:\n%s", outline(r))
 			}
-			if _, err := r.Resolve("a2"); !errors.Is(err, store.ErrNotFound) {
-				t.Errorf("resolve archived: %v", err)
+			if id, err := r.Resolve("a2x"); err != nil || id != "a2x" {
+				t.Errorf("resolve archived: %v, %v", id, err)
+			}
+			if r.Position("a2") != "-" || r.Position("a2x") != "-" || r.Position("b") != "2" {
+				t.Errorf("positions: %q %q %q", r.Position("a2"), r.Position("a2x"), r.Position("b"))
 			}
 			if p := r.Fsck(); len(p) != 0 {
 				t.Errorf("fsck: %v", p)
 			}
 		}
-	})
-	t.Run("root", func(t *testing.T) {
-		tr, st := build(t, "a:closed\nb")
-		if _, err := tr.Archive("a", false, false); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(reloaded(t, st).Roots(), []string{"b"}) {
-			t.Errorf("roots = %v", reloaded(t, st).Roots())
+		// Archiving again changes nothing.
+		if got, err := tr.Archive("a2", false, false); err != nil || len(got) != 0 {
+			t.Errorf("again: %v, %v", ids(got), err)
 		}
 	})
 	t.Run("refuses unclosed", func(t *testing.T) {
@@ -984,7 +980,7 @@ func TestArchive(t *testing.T) {
 		if _, err := tr.Archive("a", false, false); !errors.Is(err, ErrNotClosed) {
 			t.Errorf("err = %v", err)
 		}
-		if archived(t, st) != nil || outline(reloaded(t, st)) != "a\n a1\nb\n" {
+		if archivedIDs(t, st) != nil {
 			t.Error("archive changed something")
 		}
 	})
@@ -993,42 +989,30 @@ func TestArchive(t *testing.T) {
 		if _, err := tr.Archive("a", true, false); err != nil {
 			t.Fatal(err)
 		}
-		data, _ := os.ReadFile(filepath.Join(st.ArchiveDir(), "a1.md"))
-		tk, err := store.Unmarshal(data)
-		if err != nil || tk.Status != store.StatusClosed {
-			t.Errorf("a1 = %+v, %v", tk, err)
-		}
-		if outline(reloaded(t, st)) != "b\n" {
-			t.Errorf("live:\n%s", outline(reloaded(t, st)))
-		}
-	})
-	t.Run("refuses crossing deps even with force", func(t *testing.T) {
-		for _, dep := range [][2]string{{"b", "a1"}, {"a1", "b"}} {
-			tr, st := build(t, "a:closed\n  a1:closed\nb:closed")
-			if err := tr.AddDep(dep[0], dep[1]); err != nil {
-				t.Fatal(err)
-			}
-			for _, force := range []bool{false, true} {
-				if _, err := tr.Archive("a", force, false); !errors.Is(err, ErrCrossDep) {
-					t.Errorf("%v force=%v: err = %v", dep, force, err)
-				}
-			}
-			if archived(t, st) != nil {
-				t.Error("archive dir created")
+		r := reloaded(t, st)
+		for _, id := range []string{"a", "a1", "a2"} {
+			if tk := r.Get(id); tk.Status != store.StatusClosed || !tk.Archived {
+				t.Errorf("%s = %+v", id, tk)
 			}
 		}
 	})
-	t.Run("collision suffix", func(t *testing.T) {
-		tr, st := build(t, "a:closed\nb")
-		if err := os.MkdirAll(st.ArchiveDir(), 0o755); err != nil {
+	t.Run("deps to live tickets are fine", func(t *testing.T) {
+		tr, st := build(t, "a:closed\n  a1:closed\nb\nc:closed")
+		if err := tr.AddDep("b", "a1"); err != nil {
 			t.Fatal(err)
 		}
-		os.WriteFile(filepath.Join(st.ArchiveDir(), "a.md"), []byte("old"), 0o644)
+		if err := tr.AddDep("a1", "c"); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := tr.Archive("a", false, false); err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(archived(t, st), []string{"a-2.md", "a.md"}) {
-			t.Errorf("archive = %v", archived(t, st))
+		r := reloaded(t, st)
+		if res, _ := r.Ready(""); res.Outcome != Found || res.Ticket.ID != "b" {
+			t.Errorf("ready = %+v", res)
+		}
+		if p := r.Fsck(); len(p) != 0 {
+			t.Errorf("fsck: %v", p)
 		}
 	})
 	t.Run("refuses corrupt tree", func(t *testing.T) {
@@ -1042,72 +1026,35 @@ func TestArchive(t *testing.T) {
 }
 
 func TestArchiveClosed(t *testing.T) {
-	ids := func(tks []*store.Ticket) []string {
-		var out []string
-		for _, tk := range tks {
-			out = append(out, tk.ID)
-		}
-		return out
-	}
-	t.Run("maximal closed subtrees", func(t *testing.T) {
+	t.Run("every closed subtree", func(t *testing.T) {
 		tr, st := build(t, "a\n  a1:closed\n  a2:closed\n    a2x:closed\n  a3\nb:closed\n  b1:closed\nc")
-		got, skips, err := tr.ArchiveClosed(false)
-		if err != nil || skips != nil || !reflect.DeepEqual(ids(got), []string{"a1", "a2", "a2x", "b", "b1"}) {
-			t.Fatalf("got %v, %v, %v", ids(got), skips, err)
-		}
-		for _, r := range []*Tree{tr, reloaded(t, st)} {
-			if outline(r) != "a\n a3\nc\n" || len(r.Fsck()) != 0 {
-				t.Errorf("live:\n%s%v", outline(r), r.Fsck())
-			}
-		}
-		if _, err := os.Stat(filepath.Join(st.ArchiveDir(), "a2x.md")); err != nil {
-			t.Error(err)
-		}
-	})
-	t.Run("skips crossing deps, cascades and descends", func(t *testing.T) {
-		tr, st := build(t, "e:closed\n  e1:closed\n  e2:closed\nf:closed\ng\nh:closed")
-		for _, d := range [][2]string{{"g", "e1"}, {"h", "e1"}, {"f", "e2"}} {
-			if err := tr.AddDep(d[0], d[1]); err != nil {
-				t.Fatal(err)
-			}
-		}
-		got, skips, err := tr.ArchiveClosed(false)
-		if err != nil || !reflect.DeepEqual(ids(got), []string{"e2", "f"}) {
-			t.Fatalf("got %v, %v", ids(got), err)
-		}
-		want := []Skip{{ID: "e1", Blocks: []string{"g", "h"}}, {ID: "h", WaitsOn: []string{"e1"}}}
-		if !reflect.DeepEqual(skips, want) {
-			t.Errorf("skips = %+v", skips)
-		}
-		if skips[0].String() != "blocks g, h" || skips[1].String() != "waits on e1" {
-			t.Errorf("strings = %q, %q", skips[0], skips[1])
-		}
-		if r := reloaded(t, st); outline(r) != "e\n e1\ng\nh\n" || len(r.Fsck()) != 0 {
-			t.Errorf("live:\n%s%v", outline(r), r.Fsck())
-		}
-	})
-	t.Run("open epic keeps its place", func(t *testing.T) {
-		tr, st := build(t, "a\n  a1:closed")
-		if _, _, err := tr.ArchiveClosed(false); err != nil {
+		if err := tr.AddDep("c", "a1"); err != nil { // crossing deps no longer matter
 			t.Fatal(err)
 		}
-		if r := reloaded(t, st); outline(r) != "a\n" || r.Get("a").Status != store.StatusOpen {
-			t.Errorf("live:\n%s", outline(r))
+		got, err := tr.ArchiveClosed(false)
+		if err != nil || !reflect.DeepEqual(ids(got), []string{"a1", "a2", "a2x", "b", "b1"}) {
+			t.Fatalf("got %v, %v", ids(got), err)
+		}
+		r := reloaded(t, st)
+		if r.Get("a").Status != store.StatusOpen || r.Get("a").Archived || len(r.Fsck()) != 0 {
+			t.Errorf("a = %+v, fsck %v", r.Get("a"), r.Fsck())
+		}
+		if r.Position("a3") != "1.1" || r.Position("c") != "2" {
+			t.Errorf("positions: %q %q", r.Position("a3"), r.Position("c"))
 		}
 	})
-	t.Run("nothing to do", func(t *testing.T) {
-		tr, st := build(t, "a\n  a1")
-		got, skips, err := tr.ArchiveClosed(false)
-		if err != nil || len(got) != 0 || len(skips) != 0 {
-			t.Errorf("got %v, %v, %v", got, skips, err)
+	t.Run("closed epic over archived children", func(t *testing.T) {
+		tr, _ := build(t, "a:closed\n  a1:closed")
+		if _, err := tr.Archive("a1", false, false); err != nil {
+			t.Fatal(err)
 		}
-		if _, err := os.Stat(st.ArchiveDir()); !os.IsNotExist(err) {
-			t.Errorf("archive dir: %v", err)
+		if got, err := tr.ArchiveClosed(false); err != nil || !reflect.DeepEqual(ids(got), []string{"a"}) {
+			t.Errorf("got %v, %v", ids(got), err)
 		}
 	})
 	t.Run("dry run", func(t *testing.T) {
 		tr, st := build(t, "a:closed\nb\n  b1")
-		got, _, err := tr.ArchiveClosed(true)
+		got, err := tr.ArchiveClosed(true)
 		if err != nil || !reflect.DeepEqual(ids(got), []string{"a"}) {
 			t.Fatalf("got %v, %v", ids(got), err)
 		}
@@ -1115,15 +1062,8 @@ func TestArchiveClosed(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(ids(got), []string{"b", "b1"}) {
 			t.Fatalf("got %v, %v", ids(got), err)
 		}
-		r := reloaded(t, st)
-		if outline(r) != "a\nb\n b1\n" || r.Get("b1").Status != store.StatusOpen {
-			t.Errorf("dry run changed disk:\n%s", outline(r))
-		}
-		if _, err := os.Stat(st.ArchiveDir()); !os.IsNotExist(err) {
-			t.Errorf("archive dir: %v", err)
-		}
-		if _, err := tr.Archive("b", false, true); !errors.Is(err, ErrNotClosed) {
-			t.Errorf("dry run unclosed: %v", err)
+		if archivedIDs(t, st) != nil || reloaded(t, st).Get("b1").Status != store.StatusOpen {
+			t.Error("dry run changed disk")
 		}
 	})
 	t.Run("refuses corrupt tree", func(t *testing.T) {
@@ -1131,9 +1071,165 @@ func TestArchiveClosed(t *testing.T) {
 		os.WriteFile(filepath.Join(st.Dir, "c.md"), []byte("garbage"), 0o644)
 		_ = tr.Reload()
 		for _, dry := range []bool{false, true} {
-			if _, _, err := tr.ArchiveClosed(dry); !errors.Is(err, ErrCorrupt) {
+			if _, err := tr.ArchiveClosed(dry); !errors.Is(err, ErrCorrupt) {
 				t.Errorf("dry=%v: err = %v", dry, err)
 			}
+		}
+	})
+}
+
+func TestUnarchive(t *testing.T) {
+	tr, st := build(t, "a:closed\n  a1:closed\n    a1x:closed\n  a2:closed\nb")
+	if _, err := tr.Archive("a", false, false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := tr.Unarchive("a1", true)
+	if err != nil || !reflect.DeepEqual(ids(got), []string{"a", "a1", "a1x"}) {
+		t.Fatalf("dry: %v, %v", ids(got), err)
+	}
+	if len(archivedIDs(t, st)) != 4 {
+		t.Error("dry run changed disk")
+	}
+	if got, err = tr.Unarchive("a1", false); err != nil || !reflect.DeepEqual(ids(got), []string{"a", "a1", "a1x"}) {
+		t.Fatalf("got %v, %v", ids(got), err)
+	}
+	r := reloaded(t, st)
+	if got := archivedIDs(t, st); !reflect.DeepEqual(got, []string{"a2"}) {
+		t.Errorf("archived = %v", got)
+	}
+	if r.Get("a1").Status != store.StatusClosed || len(r.Fsck()) != 0 {
+		t.Errorf("a1 = %+v, fsck %v", r.Get("a1"), r.Fsck())
+	}
+	if got, err = tr.Unarchive("b", false); err != nil || len(got) != 0 {
+		t.Errorf("live: %v, %v", ids(got), err)
+	}
+}
+
+func TestArchivedRules(t *testing.T) {
+	setup := func(t *testing.T) (*Tree, *store.Store) {
+		t.Helper()
+		tr, st := build(t, "a\n  x:closed\n  a1\n  y:closed\n  a2\n  a3\nz:closed\n  z1:closed\nb")
+		for _, id := range []string{"x", "y", "z"} {
+			if _, err := tr.Archive(id, false, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return tr, st
+	}
+	t.Run("status changes refused", func(t *testing.T) {
+		tr, _ := setup(t)
+		if _, err := tr.Start("x"); !errors.Is(err, ErrArchived) {
+			t.Errorf("start: %v", err)
+		}
+		if _, err := tr.Reopen("z1"); !errors.Is(err, ErrArchived) {
+			t.Errorf("reopen: %v", err)
+		}
+		if _, err := tr.Close("x", false); err != nil {
+			t.Errorf("close: %v", err)
+		}
+	})
+	t.Run("no live work under archived", func(t *testing.T) {
+		tr, st := setup(t)
+		tk := &store.Ticket{ID: "n", Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal, Created: time.Now().UTC(), Title: "N"}
+		if err := tr.Add(tk, "z", Place{}); !errors.Is(err, ErrArchived) {
+			t.Errorf("add: %v", err)
+		}
+		if err := tr.Move("b", "z", Place{}); !errors.Is(err, ErrArchived) {
+			t.Errorf("move live: %v", err)
+		}
+		if err := tr.Indent("a2"); err != nil || tr.Parent("a2") != "a1" {
+			t.Errorf("indent skips archived sibling: %v, parent %q", err, tr.Parent("a2"))
+		}
+		// An archived ticket may move under an archived or live parent.
+		if err := tr.Move("x", "z", Place{}); err != nil {
+			t.Errorf("move archived: %v", err)
+		}
+		if err := tr.Move("x", "b", Place{}); err != nil {
+			t.Errorf("move archived under live: %v", err)
+		}
+		if p := reloaded(t, st).Fsck(); len(p) != 0 {
+			t.Errorf("fsck: %v", p)
+		}
+	})
+	t.Run("positions skip archived", func(t *testing.T) {
+		tr, _ := setup(t)
+		want := map[string]string{"a": "1", "x": "-", "a1": "1.1", "y": "-", "a2": "1.2", "a3": "1.3", "z": "-", "z1": "-", "b": "2"}
+		for id, p := range want {
+			if got := tr.Position(id); got != p {
+				t.Errorf("%s at %q, want %q", id, got, p)
+			}
+		}
+	})
+	t.Run("reorder counts shown siblings", func(t *testing.T) {
+		tr, _ := setup(t)
+		if err := tr.Up("a2"); err != nil || !reflect.DeepEqual(tr.Get("a").Children, []string{"x", "a2", "a1", "y", "a3"}) {
+			t.Errorf("up: %v, %v", err, tr.Get("a").Children)
+		}
+		if err := tr.Down("a2"); err != nil || !reflect.DeepEqual(tr.Get("a").Children, []string{"x", "a1", "y", "a2", "a3"}) {
+			t.Errorf("down: %v, %v", err, tr.Get("a").Children)
+		}
+		if err := tr.Top("a3"); err != nil || !reflect.DeepEqual(tr.Get("a").Children, []string{"x", "a3", "a1", "y", "a2"}) {
+			t.Errorf("top: %v, %v", err, tr.Get("a").Children)
+		}
+		if err := tr.Move("a3", "a", Place{Index: 2}); err != nil || !reflect.DeepEqual(tr.Get("a").Children, []string{"x", "a1", "y", "a3", "a2"}) {
+			t.Errorf("at 2: %v, %v", err, tr.Get("a").Children)
+		}
+		if err := tr.Move("a3", "a", Place{Index: 9}); err != nil || tr.Position("a3") != "1.3" {
+			t.Errorf("at 9: %v, %v", err, tr.Get("a").Children)
+		}
+		if err := tr.Move("b", "a", Place{Before: "y"}); err != nil || tr.Position("b") != "1.2" {
+			t.Errorf("before archived: %v, %v", err, tr.Get("a").Children)
+		}
+	})
+	t.Run("archived has no position to shift", func(t *testing.T) {
+		tr, _ := setup(t)
+		for name, op := range map[string]func(string) error{"up": tr.Up, "down": tr.Down, "top": tr.Top, "bottom": tr.Bottom} {
+			if err := op("y"); !errors.Is(err, ErrArchived) {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+		if err := tr.Move("y", "a", Place{Index: 1}); !errors.Is(err, ErrArchived) {
+			t.Errorf("move --at: %v", err)
+		}
+		if err := tr.Move("y", "", Place{After: "b"}); err != nil {
+			t.Errorf("move --after: %v", err)
+		}
+	})
+	t.Run("edit cannot flip archived", func(t *testing.T) {
+		tr, _ := setup(t)
+		tk := *tr.Get("x")
+		tk.Archived = false
+		if err := tr.Replace(&tk); err == nil || !strings.Contains(err.Error(), "archived cannot be edited") {
+			t.Errorf("replace: %v", err)
+		}
+		tk = *tr.Get("x")
+		tk.Title = "New"
+		if err := tr.Replace(&tk); err != nil {
+			t.Errorf("replace title: %v", err)
+		}
+	})
+	t.Run("fsck", func(t *testing.T) {
+		_, st := setup(t)
+		for _, edit := range []struct{ id, from, to string }{
+			{"z", "status: closed", "status: open"},
+			{"z1", "archived: true\n", ""},
+		} {
+			path := filepath.Join(st.Dir, edit.id+".md")
+			data, _ := os.ReadFile(path)
+			os.WriteFile(path, []byte(strings.Replace(string(data), edit.from, edit.to, 1)), 0o644)
+		}
+		var got []string
+		for _, p := range reloaded(t, st).Fsck() {
+			if p.Kind == KindArchived {
+				got = append(got, p.String())
+			}
+		}
+		want := []string{
+			"archived: z: archived but open (close it, or tk unarchive z)",
+			"archived: z: archived but descendant z1 is not (tk archive z or tk unarchive z1)",
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("fsck = %q", got)
 		}
 	})
 }

@@ -27,7 +27,7 @@ var (
 	ErrDepCycle        = errors.New("dependency cycle")
 	ErrCorrupt         = errors.New("tickets are unreadable or corrupt")
 	ErrNotClosed       = errors.New("has tickets that are not closed")
-	ErrCrossDep        = errors.New("blocked-by crosses the subtree boundary")
+	ErrArchived        = errors.New("is archived")
 )
 
 // Tree is an in-memory view of a store: every ticket, the ordered roots and
@@ -39,13 +39,12 @@ type Tree struct {
 	parent  map[string]string   // child -> parent, roots absent
 	owners  map[string][]string // child -> every list naming it ("" is ROOT)
 	order   []string            // DFS preorder over reachable tickets
-	pos     map[string][]int
+	pos     map[string][]int    // reachable tickets; nil for archived ones
 	loadErr []Problem
 
 	dirty      []string
 	rootsDirty bool
 	gone       []string
-	archived   []string
 }
 
 // Load reads every ticket and ROOT.md. Unreadable files and integrity problems
@@ -82,7 +81,7 @@ func (t *Tree) reload() error {
 		t.roots = nil
 		t.loadErr = append(t.loadErr, Problem{Kind: KindUnreadable, ID: "ROOT", Msg: err.Error()})
 	}
-	t.dirty, t.rootsDirty, t.gone, t.archived = nil, false, nil, nil
+	t.dirty, t.rootsDirty, t.gone = nil, false, nil
 	t.reindex()
 	return nil
 }
@@ -104,24 +103,31 @@ func (t *Tree) reindex() {
 	}
 	t.order = nil
 	t.pos = map[string][]int{}
-	var visit func(ids []string, prefix []int)
-	visit = func(ids []string, prefix []int) {
+	// Archived tickets, and anything under them, get no number, so the
+	// positions of the others stay dense.
+	var visit func(ids []string, prefix []int, hidden bool)
+	visit = func(ids []string, prefix []int, hidden bool) {
 		n := 0
 		for _, id := range ids {
-			if _, ok := t.tickets[id]; !ok {
+			tk, ok := t.tickets[id]
+			if !ok {
 				continue
 			}
 			if _, seen := t.pos[id]; seen {
 				continue
 			}
-			n++
-			p := append(slices.Clone(prefix), n)
+			var p []int
+			h := hidden || tk.Archived
+			if !h {
+				n++
+				p = append(slices.Clone(prefix), n)
+			}
 			t.pos[id] = p
 			t.order = append(t.order, id)
-			visit(t.tickets[id].Children, p)
+			visit(tk.Children, p, h)
 		}
 	}
-	visit(t.roots, nil)
+	visit(t.roots, nil, false)
 }
 
 func (t *Tree) sortedIDs() []string {
@@ -186,9 +192,13 @@ func (t *Tree) IsLeaf(id string) bool {
 	return tk != nil && len(tk.Children) == 0
 }
 
-// Position formats the position of id as "2.1.3", or "" if unreachable.
+// Position formats the position of id as "2.1.3", "-" for an archived
+// ticket (or one under an archived ticket), or "" if unreachable.
 func (t *Tree) Position(id string) string {
-	p := t.pos[id]
+	p, ok := t.pos[id]
+	if ok && p == nil {
+		return "-"
+	}
 	parts := make([]string, len(p))
 	for i, n := range p {
 		parts[i] = strconv.Itoa(n)
@@ -236,6 +246,17 @@ func (t *Tree) Descendants(id string) []string {
 		return nil
 	}
 	return s[1:]
+}
+
+// IsArchived reports whether id is an archived ticket.
+func (t *Tree) IsArchived(id string) bool {
+	tk := t.tickets[id]
+	return tk != nil && tk.Archived
+}
+
+// archivedErr reports ErrArchived for id.
+func archivedErr(id string) error {
+	return fmt.Errorf("%s: %w (tk unarchive %s first)", id, ErrArchived, id)
 }
 
 func (t *Tree) isAncestor(anc, id string) bool { return slices.Contains(t.Ancestors(id), anc) }
@@ -297,10 +318,10 @@ func (t *Tree) apply(fn func() error) error {
 		_ = t.reload()
 		return err
 	}
-	for _, id := range append(t.gone, t.archived...) {
+	for _, id := range t.gone {
 		delete(t.tickets, id)
 	}
-	t.dirty, t.rootsDirty, t.gone, t.archived = nil, false, nil, nil
+	t.dirty, t.rootsDirty, t.gone = nil, false, nil
 	t.reindex()
 	return nil
 }
@@ -313,7 +334,7 @@ func (t *Tree) writable() error {
 	return nil
 }
 
-// commit saves dirty tickets and ROOT.md before deleting or archiving files,
+// commit saves dirty tickets and ROOT.md before deleting files,
 // so a crash midway leaves orphaned files (reported by fsck) rather than
 // lost ones.
 func (t *Tree) commit() error {
@@ -329,11 +350,6 @@ func (t *Tree) commit() error {
 	}
 	for _, id := range t.gone {
 		if err := t.st.Delete(id); err != nil && !errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-	}
-	for _, id := range t.archived {
-		if _, err := t.st.Archive(id); err != nil {
 			return err
 		}
 	}

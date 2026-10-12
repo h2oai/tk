@@ -402,31 +402,56 @@ func TestArchive(t *testing.T) {
 	p := e.newT("Parent")
 	c := e.newT("Child", "--under", p)
 	other := e.newT("Other")
+	e.run("dep", other, c)
 
 	_, errs, code := e.fail("archive", p)
 	if code != ExitGeneric || !strings.Contains(errs, "not closed") {
 		t.Errorf("archive open: %d %q", code, errs)
 	}
-	e.run("dep", other, c)
-	_, errs, _ = e.fail("archive", p, "--force")
-	contains(t, errs, other+" waits on "+c)
-	e.run("undep", other, c)
-
 	out := e.run("archive", p, "--force")
 	if out != p+" archived \"Parent\"\n"+c+" archived \"Child\"\n" {
 		t.Errorf("archive output:\n%s", out)
 	}
-	for _, f := range []string{p, c} {
-		if _, err := os.Stat(filepath.Join(e.dir, "archive", f+".md")); err != nil {
-			t.Error(err)
-		}
+	data, err := os.ReadFile(filepath.Join(e.dir, c+".md"))
+	if err != nil || !strings.Contains(string(data), "\narchived: true\n") {
+		t.Errorf("child file: %v\n%s", err, data)
 	}
-	if ls := e.run("ls", "--all"); strings.Contains(ls, p) || !strings.Contains(ls, other) {
-		t.Errorf("ls:\n%s", ls)
+	if ls := e.run("ls", "--all"); strings.Contains(ls, p) || !strings.HasPrefix(ls, "1 [ ] "+other) {
+		t.Errorf("ls --all:\n%s", ls)
 	}
-	_, errs, _ = e.fail("show", c)
-	contains(t, errs, "not found")
+	want := "- [a] " + p + "  [task/normal] Parent\n  - [a] " + c + "  [task/normal] Child\n1 [ ] " + other + "  [task/normal] Other\n"
+	if ls := e.run("ls", "--archived"); ls != want {
+		t.Errorf("ls --archived:\n%s", ls)
+	}
+	out, errs, _, err = e.runIn("", "ls", c)
+	if err != nil || out != "" || errs != c+" is archived; use --archived to show it\n" {
+		t.Errorf("ls archived id: %v %q %q", err, out, errs)
+	}
+	show := e.run("show", c)
+	contains(t, show, "archived: true\n")
+	contains(t, show, "position: -\n")
+	if out := e.run("ready"); !strings.HasPrefix(out, other) {
+		t.Errorf("ready: %q", out)
+	}
+
+	_, errs, _ = e.fail("start", c)
+	contains(t, errs, "is archived (tk unarchive "+c+" first)")
+	_, errs, _ = e.fail("new", "X", "--under", p)
+	contains(t, errs, "is archived")
+	_, errs, _ = e.fail("up", c)
+	contains(t, errs, "has no position")
+	e.run("note", c, "still editable")
 	contains(t, e.run("fsck"), "ok")
+
+	if out := e.run("unarchive", c, "-n"); out != p+" would unarchive \"Parent\"\n"+c+" would unarchive \"Child\"\n" {
+		t.Errorf("unarchive -n: %q", out)
+	}
+	if out := e.run("unarchive", c); out != p+" unarchived \"Parent\"\n"+c+" unarchived \"Child\"\n" {
+		t.Errorf("unarchive: %q", out)
+	}
+	if ls := e.run("ls", "--all"); !strings.Contains(ls, "1 [x] "+p) {
+		t.Errorf("ls after unarchive:\n%s", ls)
+	}
 }
 
 func TestArchiveAll(t *testing.T) {
@@ -438,31 +463,29 @@ func TestArchiveAll(t *testing.T) {
 	e.run("close", done)
 	e.run("close", held)
 
-	for _, args := range [][]string{{"archive", "--all", done}, {"archive", "--all", "--force"}, {"archive"}} {
+	for _, args := range [][]string{{"archive", "--all", done}, {"archive", "--all", "--force"}, {"archive"}, {"unarchive"}} {
 		if _, _, code := e.fail(args...); code != ExitGeneric {
 			t.Errorf("%v: code %d", args, code)
 		}
 	}
 
-	out, errs, _, err := e.runIn("", "archive", "--all", "-n")
-	if err != nil || out != done+" would archive \"Done\"\n" || errs != "skipped "+held+": blocks "+waiter+"\n" {
-		t.Errorf("dry run: %v\nout: %q\nerr: %q", err, out, errs)
+	want := done + " would archive \"Done\"\n" + held + " would archive \"Held\"\n"
+	if out := e.run("archive", "--all", "-n"); out != want {
+		t.Errorf("dry run: %q", out)
 	}
 	if out := e.run("archive", done, "--dry-run"); out != done+" would archive \"Done\"\n" {
 		t.Errorf("single dry run: %q", out)
 	}
-	if _, err := os.Stat(filepath.Join(e.dir, "archive")); !os.IsNotExist(err) {
-		t.Errorf("dry run created archive dir: %v", err)
+	if ls := e.run("ls", "--all"); !strings.Contains(ls, done) {
+		t.Errorf("dry run archived:\n%s", ls)
 	}
-
-	out, errs, _, err = e.runIn("", "archive", "--all")
-	if err != nil || out != done+" archived \"Done\"\n" || errs != "skipped "+held+": blocks "+waiter+"\n" {
-		t.Errorf("archive --all: %v\nout: %q\nerr: %q", err, out, errs)
+	if out := e.run("archive", "--all"); out != strings.ReplaceAll(want, "would archive", "archived") {
+		t.Errorf("archive --all: %q", out)
 	}
-	if ls := e.run("ls", "--all"); strings.Contains(ls, done) || !strings.Contains(ls, held) {
+	if ls := e.run("ls", "--all"); ls != "1 [ ] "+waiter+"  [task/normal] Waiter\n" {
 		t.Errorf("ls:\n%s", ls)
 	}
-	if out, errs, _, err = e.runIn("", "archive", "--all"); err != nil || out != "" {
-		t.Errorf("second run: %v %q %q", err, out, errs)
+	if out := e.run("archive", "--all"); out != "" {
+		t.Errorf("second run: %q", out)
 	}
 }

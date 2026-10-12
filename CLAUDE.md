@@ -18,7 +18,7 @@ go run main.go [command]   # run without building
 ### Common operations
 ```bash
 ./tk new "Title" [--type T] [-e E] [--under P] [--at N]   # Create a ticket (prints id)
-./tk ls [--all] [id]                    # Outline of the tree with positions
+./tk ls [--all] [--archived] [id]       # Outline of the tree with positions
 ./tk show <partial-id>                  # Show ticket details
 ./tk ready [epic]                       # Highest ready leaf (exit 0/1/2, 3 on error)
 ./tk type <id> <task|bug|feature|chore>  # set type
@@ -27,8 +27,9 @@ go run main.go [command]   # run without building
 ./tk mv <id> --under P --at N           # also --before/--after/--root; up/down/top/bottom
 ./tk dep <id> <blocker> / undep ...     # blocked-by management
 ./tk rm <id> [--force]
-./tk archive <id> [--force] [-n]        # move closed subtree to .tickets/archive/
-./tk archive --all [-n]                 # archive every fully closed subtree, skip crossing deps
+./tk archive <id> [--force] [-n]        # mark closed subtree archived: true (stays in place)
+./tk archive --all [-n]                 # archive every fully closed subtree
+./tk unarchive <id> [-n]                # clear the flag on subtree + archived ancestors
 ./tk fsck                               # integrity check
 ./tk tui                                # interactive reorder + read-only detail view (enter/esc) + $EDITOR (e)
 ```
@@ -37,7 +38,7 @@ go run main.go [command]   # run without building
 
 ### Core Concepts
 
-**On-disk layout**: `.tickets/ROOT.md` holds the ordered root ids (`roots: [...]` in frontmatter). Each ticket is `.tickets/<id>.md` with frontmatter `id`, `status` (`open|in_progress|closed`), `type` (`task|bug|feature|chore`, always written; missing reads as `task`; pure metadata, no effect on ready/status/order/deps), `effort` (`easy|normal|hard`, always written; missing reads as `normal`; pure metadata like `type`, meant for routing work to an agent), `blocked-by` (list of ids), `children` (ordered list of ids) and `created`, followed by a markdown body (`# Title`, text, timestamped notes). The hierarchy is stored **only** in `children` lists and `ROOT.md`; a child does not store its parent, it is derived by scanning.
+**On-disk layout**: `.tickets/ROOT.md` holds the ordered root ids (`roots: [...]` in frontmatter). Each ticket is `.tickets/<id>.md` with frontmatter `id`, `status` (`open|in_progress|closed`), `type` (`task|bug|feature|chore`, always written; missing reads as `task`; pure metadata, no effect on ready/status/order/deps), `effort` (`easy|normal|hard`, always written; missing reads as `normal`; pure metadata like `type`, meant for routing work to an agent), `archived` (optional, written only when `true`), `blocked-by` (list of ids), `children` (ordered list of ids) and `created`, followed by a markdown body (`# Title`, text, timestamped notes). The hierarchy is stored **only** in `children` lists and `ROOT.md`; a child does not store its parent, it is derived by scanning.
 
 **Order**: siblings are ordered by position in the parent's `children` list (roots by `ROOT.md`). Global order is DFS preorder over the roots. A leaf is a ticket with no children; an epic is any ticket that has children (not a type).
 
@@ -49,7 +50,7 @@ go run main.go [command]   # run without building
 
 **Status rules** (`internal/tree/status.go`): leaves hold real status. `start` fails on a non-leaf with unclosed descendants. `close` on a non-leaf fails while any descendant is unclosed; `--force` closes all descendants. Adding a child under a `closed` or `in_progress` ticket resets that parent to `open`; start/reopen/add/move of unclosed work also resets closed and `in_progress` ancestors (`fsck` flags an `in_progress` or `closed` ticket with unclosed descendants). Mutations (`Tree.apply`) refuse with `ErrCorrupt` while any ticket or `ROOT.md` failed to load; ticket frontmatter is parsed strictly, so unknown keys make the ticket unreadable instead of being dropped on save. `undep` fails unless the blocker is currently listed (an exact dangling id is allowed). `rm` refuses if the ticket has children or is anyone's blocker; `--force` deletes the subtree and detaches deps.
 
-**Archival** (`internal/tree/archive.go`, `Store.Archive`): `archive` moves a subtree into `.tickets/archive/` (flat, no `ROOT.md`, created lazily), one-way. Every member must be closed (`--force` closes first); refused, even with `--force`, while a `blocked-by` edge links a member with a live ticket. Live lists drop every reference; files are renamed byte for byte, taking `<id>-N.md` on name collisions. `commit` rewrites lists before renaming, so a crash leaves orphans for `fsck`. `archive --all` (`Tree.ArchiveClosed`) takes every maximal all-closed subtree as one batch; a ticket with a `blocked-by` edge to a ticket that stays live is skipped with its ancestors (repeated to a fixpoint) and reported on stderr, exit 0. `-n` runs the checks without writing. Nothing else reads `archive/` (`Store.IDs` skips directories).
+**Archival** (`internal/tree/archive.go`): `archive` sets `archived: true` on every ticket of a closed subtree (`--force` closes first); files and `children`/`ROOT.md` entries stay put, and deps to live tickets are fine. Invariants (`fsck`, kind `archived`): archived implies closed, and an archived ticket's descendants are all archived. `archive --all` (`Tree.ArchiveClosed`) flags every all-closed subtree; `unarchive` (`Tree.Unarchive`) clears the subtree plus archived ancestors; `-n` writes nothing. Archived tickets resolve like any other but get no position (`reindex` stores a nil `pos`, `Position` prints `-`), so `Place.Index` and `up/down/top/bottom` count only shown siblings (`Tree.shown`) and refuse an archived ticket (`ErrArchived`). `start`/`reopen` refuse archived tickets; `Add`/`Move` refuse putting a non-archived ticket under an archived parent. `ls` hides them unless `--archived` (implies `--all`, marker `[a]`), the TUI always hides them.
 
 **Dependencies** (`internal/tree/dep.go`): rejected when they form a cycle (counting `blocked-by` edges and parent links), or link a ticket with its own ancestor or descendant. `mv` re-checks these. Tickets above an unclosed blocker are not errors: `internal/tree/order.go` (`Misorders`, `MisordersSince`) feeds stderr warnings from `dep`/`mv`/`up`/`down`/`top`/`bottom` and `warn:` lines in `fsck` (which keeps exit 0 for them).
 
@@ -68,7 +69,7 @@ go run main.go [command]   # run without building
 - `move.go`: `mv`, `up`, `down`, `top`, `bottom`
 - `dep.go`: `dep`, `undep`
 - `rm.go`, fsck command
-- `archive.go`: `archive`
+- `archive.go`: `archive`, `unarchive`
 - `tui.go`: `tui` (loads the tree and starts `internal/tui`)
 - `textinput.go`: free-form text contract (inline, `-` for stdin, `-F` file)
 
@@ -84,12 +85,12 @@ go run main.go [command]   # run without building
 - `status.go`: start/close/reopen rules
 - `mutate.go`: add, move, up/down/top/bottom, indent/outdent, remove
 - `dep.go`: dependency validation and add/remove
-- `archive.go`: move a closed subtree to the archive
-- `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations)
+- `archive.go`: archive/unarchive (set the `archived` flag on subtrees)
+- `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations, archived invariants)
 
-**`internal/edit/`**: `$EDITOR` round trip shared by `tk edit` and the TUI. `Start` reads the ticket's raw file (`Tree.Raw`) under a shared lock into a temp file; `Finish` validates it, writes nothing if it is byte-identical (`unchanged`), refuses if the file changed on disk meanwhile, and saves via `Tree.Replace` under an exclusive lock. `Replace` refuses any change to `status`, `children` or `blocked-by` (pointing at `start/close/reopen`, `mv`, `dep/undep`), so edits never bypass the tree rules; title, body, type, effort and `created` are free.
+**`internal/edit/`**: `$EDITOR` round trip shared by `tk edit` and the TUI. `Start` reads the ticket's raw file (`Tree.Raw`) under a shared lock into a temp file; `Finish` validates it, writes nothing if it is byte-identical (`unchanged`), refuses if the file changed on disk meanwhile, and saves via `Tree.Replace` under an exclusive lock. `Replace` refuses any change to `status`, `archived`, `children` or `blocked-by` (pointing at `start/close/reopen`, `archive/unarchive`, `mv`, `dep/undep`), so edits never bypass the tree rules; title, body, type, effort and `created` are free.
 
-**`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: its own markdown formatter rendered with glamour, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. `e` (list or detail view, `edit.go`) is the only way it changes ticket contents: it hands the file to `$EDITOR` through `internal/edit`, the same code as `tk edit`, via `tea.ExecProcess` (tests swap the unexported `Model.exec`). There are no create, delete, status, type or dep keys. Tests drive `Model.Update` in-process.
+**`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: its own markdown formatter rendered with glamour, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. `e` (list or detail view, `edit.go`) is the only way it changes ticket contents: it hands the file to `$EDITOR` through `internal/edit`, the same code as `tk edit`, via `tea.ExecProcess` (tests swap the unexported `Model.exec`). There are no create, delete, status, type, archive or dep keys; archived tickets are never listed. Tests drive `Model.Update` in-process.
 
 ### Key Design Patterns
 

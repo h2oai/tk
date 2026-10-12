@@ -10,15 +10,17 @@ import (
 )
 
 // Place says where to insert among siblings. At most one field may be set;
-// none means append. Index is 1-based and clamped to the end; 0 and -1
-// append. Before and After name a sibling under the target parent.
+// none means append. Index is 1-based, counts only shown (existing, not
+// archived) siblings and is clamped to the end; 0 and -1 append. Before and
+// After name a sibling under the target parent, archived or not.
 type Place struct {
 	Index         int
 	Before, After string
 }
 
 // insert returns list (which must not contain id) with id placed per p.
-func (p Place) insert(list []string, id string) ([]string, error) {
+// shown says which entries Index counts.
+func (p Place) insert(list []string, id string, shown func(string) bool) ([]string, error) {
 	n := 0
 	for _, set := range []bool{p.Index != 0, p.Before != "", p.After != ""} {
 		if set {
@@ -32,7 +34,14 @@ func (p Place) insert(list []string, id string) ([]string, error) {
 	case p.Index < -1:
 		return nil, fmt.Errorf("%w: index %d", ErrBadPlace, p.Index)
 	case p.Index > 0:
-		i = min(p.Index-1, len(list))
+		for j, n := 0, 0; j < len(list); j++ {
+			if shown(list[j]) {
+				if n++; n == p.Index {
+					i = j
+					break
+				}
+			}
+		}
 	case p.Before != "" || p.After != "":
 		anchor := p.Before + p.After
 		if anchor == id {
@@ -51,6 +60,13 @@ func (p Place) insert(list []string, id string) ([]string, error) {
 
 func without(list []string, id string) []string {
 	return slices.DeleteFunc(slices.Clone(list), func(s string) bool { return s == id })
+}
+
+// shown reports whether id exists and is not archived: the siblings that
+// positions count.
+func (t *Tree) shown(id string) bool {
+	tk := t.tickets[id]
+	return tk != nil && !tk.Archived
 }
 
 // checkParent validates that parent is "" or an existing ticket.
@@ -89,10 +105,16 @@ func (t *Tree) Add(tk *store.Ticket, parent string, p Place) error {
 	if t.tickets[tk.ID] != nil {
 		return fmt.Errorf("%s: %w", tk.ID, ErrExists)
 	}
+	if tk.Archived {
+		return fmt.Errorf("new ticket %s must not be archived", tk.ID)
+	}
 	if err := t.checkParent(parent); err != nil {
 		return err
 	}
-	list, err := p.insert(t.siblings(parent), tk.ID)
+	if t.IsArchived(parent) {
+		return archivedErr(parent)
+	}
+	list, err := p.insert(t.siblings(parent), tk.ID, t.shown)
 	if err != nil {
 		return err
 	}
@@ -116,9 +138,12 @@ func (t *Tree) Add(tk *store.Ticket, parent string, p Place) error {
 
 // Move reparents and/or repositions id. parent "" means root. It fails with
 // ErrCycle when parent is id or one of its descendants, and rejects moves that
-// introduce a dependency problem.
+// introduce a dependency problem. It fails with ErrArchived when a ticket that
+// is not archived would go under an archived parent, or when an archived
+// ticket is placed by Index (it has no position to count from).
 func (t *Tree) Move(id, parent string, p Place) error {
-	if _, err := t.mustExist(id); err != nil {
+	tk, err := t.mustExist(id)
+	if err != nil {
 		return err
 	}
 	if err := t.checkParent(parent); err != nil {
@@ -127,8 +152,14 @@ func (t *Tree) Move(id, parent string, p Place) error {
 	if parent == id || slices.Contains(t.Descendants(id), parent) {
 		return fmt.Errorf("move %s under %s: %w", id, parent, ErrCycle)
 	}
+	switch {
+	case !tk.Archived && t.IsArchived(parent):
+		return archivedErr(parent)
+	case tk.Archived && p.Index != 0:
+		return fmt.Errorf("%s: %w and has no position; use --under, --before, --after or --root", id, ErrArchived)
+	}
 	old := t.parent[id]
-	list, err := p.insert(without(t.siblings(parent), id), id)
+	list, err := p.insert(without(t.siblings(parent), id), id, t.shown)
 	if err != nil {
 		return err
 	}
@@ -151,26 +182,32 @@ func (t *Tree) Move(id, parent string, p Place) error {
 	})
 }
 
-// Up moves id one place earlier among its siblings; at the edge it is a no-op.
+// Up moves id one place earlier among its shown siblings, hopping over
+// archived ones; at the edge it is a no-op. Up, Down, Top and Bottom fail
+// with ErrArchived on an archived ticket.
 func (t *Tree) Up(id string) error { return t.shift(id, func(i, n int) int { return max(i-1, 0) }) }
 
-// Down moves id one place later among its siblings.
+// Down moves id one place later among its shown siblings.
 func (t *Tree) Down(id string) error {
 	return t.shift(id, func(i, n int) int { return min(i+1, n-1) })
 }
 
-// Top moves id to the first place among its siblings.
+// Top moves id to the first place among its shown siblings.
 func (t *Tree) Top(id string) error { return t.shift(id, func(i, n int) int { return 0 }) }
 
-// Bottom moves id to the last place among its siblings.
+// Bottom moves id to the last place among its shown siblings.
 func (t *Tree) Bottom(id string) error { return t.shift(id, func(i, n int) int { return n - 1 }) }
 
 func (t *Tree) shift(id string, target func(i, n int) int) error {
-	if _, err := t.mustExist(id); err != nil {
+	tk, err := t.mustExist(id)
+	if err != nil {
 		return err
 	}
+	if tk.Archived {
+		return fmt.Errorf("%s: %w and has no position", id, ErrArchived)
+	}
 	parent := t.parent[id]
-	list := t.siblings(parent)
+	list := slices.DeleteFunc(slices.Clone(t.siblings(parent)), func(s string) bool { return !t.shown(s) })
 	i := slices.Index(list, id)
 	if i < 0 {
 		return fmt.Errorf("%s is not listed under its parent; run fsck", id)
@@ -182,8 +219,8 @@ func (t *Tree) shift(id string, target func(i, n int) int) error {
 	return t.Move(id, parent, Place{Index: to + 1})
 }
 
-// Indent makes id the last child of its previous sibling. It is a no-op when
-// id is the first of its siblings.
+// Indent makes id the last child of its previous shown sibling. It is a no-op
+// when id is the first of its shown siblings.
 func (t *Tree) Indent(id string) error {
 	if _, err := t.mustExist(id); err != nil {
 		return err
@@ -191,7 +228,7 @@ func (t *Tree) Indent(id string) error {
 	list := t.siblings(t.parent[id])
 	i := slices.Index(list, id)
 	for i--; i >= 0; i-- {
-		if t.tickets[list[i]] != nil {
+		if t.shown(list[i]) {
 			return t.Move(id, list[i], Place{})
 		}
 	}
@@ -269,8 +306,8 @@ func (t *Tree) isListed(parent, id string) bool {
 }
 
 // Replace overwrites the stored ticket with tk (same id) after an edit. It
-// refuses to change status, children or blocked-by: those go through the
-// commands that apply the tree rules.
+// refuses to change status, archived, children or blocked-by: those go
+// through the commands that apply the tree rules.
 func (t *Tree) Replace(tk *store.Ticket) error {
 	cur, err := t.mustExist(tk.ID)
 	if err != nil {
@@ -279,6 +316,8 @@ func (t *Tree) Replace(tk *store.Ticket) error {
 	switch {
 	case tk.Status != cur.Status:
 		return fmt.Errorf("%s: status cannot be edited, use tk start, close or reopen", tk.ID)
+	case tk.Archived != cur.Archived:
+		return fmt.Errorf("%s: archived cannot be edited, use tk archive or unarchive", tk.ID)
 	case !slices.Equal(tk.Children, cur.Children):
 		return fmt.Errorf("%s: children cannot be edited, use tk mv", tk.ID)
 	case !slices.Equal(tk.BlockedBy, cur.BlockedBy):

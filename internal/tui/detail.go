@@ -20,6 +20,9 @@ func markdown(t *tree.Tree, id string) string {
 	fmt.Fprintf(&b, "- **id:** %s\n", id)
 	fmt.Fprintf(&b, "- **status:** %s\n", tk.Status)
 	fmt.Fprintf(&b, "- **type:** %s\n", tk.Type)
+	if tk.Archived {
+		b.WriteString("- **archived:** true\n")
+	}
 	fmt.Fprintf(&b, "- **position:** %s\n", t.Position(id))
 	if p := t.Parent(id); p != "" {
 		fmt.Fprintf(&b, "- **parent:** %s %q\n", p, t.Get(p).Title)
@@ -38,7 +41,7 @@ func markdown(t *tree.Tree, id string) string {
 	if kids := t.Children(id); len(kids) > 0 {
 		b.WriteString("\n## Children\n\n")
 		for _, c := range kids {
-			fmt.Fprintf(&b, "- %s %s %s  %s\n", t.Position(c), t.Get(c).Status.Marker(), c, t.Get(c).Title)
+			fmt.Fprintf(&b, "- %s %s %s  %s\n", t.Position(c), t.Get(c).Marker(), c, t.Get(c).Title)
 		}
 	}
 	if body := strings.TrimSpace(tk.Body); body != "" {

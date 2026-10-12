@@ -26,10 +26,14 @@ func (t *Tree) reopenAncestors(id string, changed *[]string) {
 }
 
 // Start sets in_progress. It fails with ErrNotLeaf while descendants are
-// unclosed. Closed ancestors are reopened. It returns the changed ids.
+// unclosed, and with ErrArchived on an archived ticket. Closed ancestors are
+// reopened. It returns the changed ids.
 func (t *Tree) Start(id string) ([]string, error) {
 	if _, err := t.mustExist(id); err != nil {
 		return nil, err
+	}
+	if t.IsArchived(id) {
+		return nil, archivedErr(id)
 	}
 	if t.hasUnclosed(t.Descendants(id)) {
 		return nil, fmt.Errorf("%s: %w", id, ErrNotLeaf)
@@ -65,10 +69,14 @@ func (t *Tree) Close(id string, force bool) ([]string, error) {
 	return changed, err
 }
 
-// Reopen sets open and reopens closed ancestors. It returns the changed ids.
+// Reopen sets open and reopens closed ancestors. It fails with ErrArchived on
+// an archived ticket. It returns the changed ids.
 func (t *Tree) Reopen(id string) ([]string, error) {
 	if _, err := t.mustExist(id); err != nil {
 		return nil, err
+	}
+	if t.IsArchived(id) {
+		return nil, archivedErr(id)
 	}
 	var changed []string
 	err := t.apply(func() error {

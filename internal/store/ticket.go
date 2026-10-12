@@ -117,6 +117,7 @@ type Ticket struct {
 	Status    Status
 	Type      Type
 	Effort    Effort
+	Archived  bool
 	BlockedBy []string
 	Children  []string
 	Created   time.Time
@@ -148,6 +149,15 @@ func (t *Ticket) Validate() error {
 		return fmt.Errorf("ticket %s: title must be a single line", t.ID)
 	}
 	return nil
+}
+
+// Marker is the glyph shown for the ticket in outlines: [a] when archived,
+// else its status marker.
+func (t *Ticket) Marker() string {
+	if t.Archived {
+		return "[a]"
+	}
+	return t.Status.Marker()
 }
 
 // validID reports whether id is safe to use as a file name.
