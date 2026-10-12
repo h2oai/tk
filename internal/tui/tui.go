@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -84,6 +85,20 @@ func (m *Model) follow(id string) {
 	}
 }
 
+// hidden reports why id cannot be acted on, nil if it can: it no longer
+// exists, or it was archived (archived tickets are never listed). Reorder,
+// the detail view and the editor all check it after reloading, so a ticket
+// that vanished or was archived on disk since it was selected is left alone.
+func (m *Model) hidden(id string) error {
+	switch {
+	case m.t.Get(id) == nil:
+		return errors.New(id + " no longer exists")
+	case m.t.IsArchived(id):
+		return errors.New(id + " is archived")
+	}
+	return nil
+}
+
 // mutate runs op on the selected ticket. Errors from the tree go to the
 // status line.
 func (m *Model) mutate(op func(*tree.Tree, string) error) {
@@ -104,8 +119,8 @@ func (m *Model) mutate(op func(*tree.Tree, string) error) {
 		}
 		m.rebuild()
 		m.follow(id)
-		if m.t.Get(id) == nil {
-			m.status = id + " no longer exists"
+		if err := m.hidden(id); err != nil {
+			m.status = err.Error()
 			return
 		}
 	}

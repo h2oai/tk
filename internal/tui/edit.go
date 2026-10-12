@@ -32,6 +32,12 @@ func (m *Model) startEdit(id string) tea.Cmd {
 	s, err := edit.Start(m.t, id, edit.Locker(m.lock))
 	// Start reloaded the tree, even if it then failed.
 	m.refresh(id, false)
+	if err == nil {
+		// Archived since it was selected: it is no longer listed, so leave it.
+		if err = m.hidden(id); err != nil {
+			s.Discard()
+		}
+	}
 	if err != nil {
 		m.status = err.Error()
 		return nil
@@ -61,15 +67,15 @@ func (m *Model) finishEdit(msg editDoneMsg) {
 }
 
 // refresh rebuilds the rows and the detail view from the tree, keeping the
-// cursor on id. If the ticket is gone the detail view closes. top resets the
-// detail view's scroll.
+// cursor on id. If the ticket is gone or archived the detail view closes. top
+// resets the detail view's scroll.
 func (m *Model) refresh(id string, top bool) {
 	m.rebuild()
 	m.follow(id)
 	if m.detailID == "" {
 		return
 	}
-	if m.t.Get(m.detailID) == nil {
+	if m.hidden(m.detailID) != nil {
 		m.closeDetail()
 		return
 	}

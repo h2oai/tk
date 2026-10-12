@@ -127,3 +127,45 @@ func TestEditVanishedTicketClosesDetail(t *testing.T) {
 		t.Errorf("detailID=%q status=%q", m.detailID, m.status)
 	}
 }
+
+func TestEditSkipsTicketArchivedOnDisk(t *testing.T) {
+	m, st := newModel(t, "aaa -", "bbb -")
+	m.lock = noopLock
+	runs := fakeEditor(t, m, retitle)
+	press(m, "j")
+	archiveOnDisk(t, st, "bbb")
+	pressEdit(m)
+	if *runs != 0 || m.status != "bbb is archived" {
+		t.Errorf("list: runs=%d status=%q", *runs, m.status)
+	}
+
+	key(m, tea.KeyEnter) // aaa, the only shown ticket
+	archiveOnDisk(t, st, "aaa")
+	pressEdit(m)
+	if *runs != 0 || m.detailID != "" || m.status != "aaa is archived" {
+		t.Errorf("detail: runs=%d detailID=%q status=%q", *runs, m.detailID, m.status)
+	}
+	if tk, _ := st.Load("aaa"); tk.Title != "T aaa" {
+		t.Errorf("disk title %q", tk.Title)
+	}
+}
+
+func TestEditArchivedWhileEditingClosesDetail(t *testing.T) {
+	m, st := newModel(t, "aaa -", "bbb -")
+	m.lock = noopLock
+	key(m, tea.KeyEnter)
+	fakeEditor(t, m, func(s string) string {
+		archiveOnDisk(t, st, "aaa")
+		return retitle(s)
+	})
+	pressEdit(m)
+	if m.detailID != "" || !strings.Contains(m.status, "changed while editing") {
+		t.Errorf("detailID=%q status=%q", m.detailID, m.status)
+	}
+	if got := order(m); got != "bbb" || m.selected() != "bbb" {
+		t.Errorf("rows = %q on %s", got, m.selected())
+	}
+	if tk, _ := st.Load("aaa"); tk.Title != "T aaa" || !tk.Archived {
+		t.Errorf("disk: title %q archived %v", tk.Title, tk.Archived)
+	}
+}

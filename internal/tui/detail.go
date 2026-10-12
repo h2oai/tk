@@ -68,7 +68,7 @@ func renderDetail(t *tree.Tree, id string, width int) []string {
 
 // reload refreshes the tree from disk under a shared lock (when there is a
 // lock) and puts the cursor on id. It reports false, with the reason in the
-// status line, if that failed or id no longer exists.
+// status line, if that failed or id no longer exists or is archived.
 func (m *Model) reload(id string) bool {
 	if m.lock != nil {
 		unlock, err := m.lock(false)
@@ -84,8 +84,8 @@ func (m *Model) reload(id string) bool {
 		m.rebuild()
 		m.follow(id)
 	}
-	if m.t.Get(id) == nil {
-		m.status = id + " no longer exists"
+	if err := m.hidden(id); err != nil {
+		m.status = err.Error()
 		return false
 	}
 	return true
@@ -112,7 +112,7 @@ func (m *Model) open() {
 // step moves the detail view to the next (delta 1) or previous (delta -1)
 // ticket in list order, reloading from disk first. At either end it stays on
 // the current ticket and says so in the status line. If the current ticket has
-// vanished it returns to the list.
+// vanished or been archived it returns to the list.
 func (m *Model) step(delta int) {
 	id := m.detailID
 	if !m.reload(id) {

@@ -362,3 +362,81 @@ func TestArchivedHidden(t *testing.T) {
 		t.Errorf("reloaded rows = %q", got)
 	}
 }
+
+// archiveOnDisk archives id through a separate tree, as another tk process
+// would, behind the model's back.
+func archiveOnDisk(t *testing.T, st *store.Store, id string) {
+	t.Helper()
+	other, err := tree.Load(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Archive(id, true, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func noopLock(bool) (func(), error) { return func() {}, nil }
+
+func TestReorderSkipsTicketArchivedOnDisk(t *testing.T) {
+	for _, k := range []string{"J", "K", "H", "L", "g", "G"} {
+		t.Run(k, func(t *testing.T) {
+			m, st := newModel(t, "a -", "x a", "b a", "y a", "c -")
+			m.lock = noopLock
+			press(m, "j", "j") // b
+			archiveOnDisk(t, st, "b")
+			press(m, k)
+			if m.status != "b is archived" {
+				t.Errorf("status %q", m.status)
+			}
+			disk := reload(t, st)
+			if got := strings.Join(disk.t.Get("a").Children, " "); got != "x b y" {
+				t.Errorf("disk children of a = %q", got)
+			}
+			if got := strings.Join(disk.t.Order(), " "); got != "a x b y c" {
+				t.Errorf("disk order = %q", got)
+			}
+			if got := order(m); got != "a -x -y c" {
+				t.Errorf("rows = %q", got)
+			}
+		})
+	}
+}
+
+func TestEnterSkipsTicketArchivedOnDisk(t *testing.T) {
+	m, st := newModel(t, "aaa -", "bbb -")
+	m.lock = noopLock
+	press(m, "j")
+	archiveOnDisk(t, st, "bbb")
+	key(m, tea.KeyEnter)
+	if m.detailID != "" || m.status != "bbb is archived" {
+		t.Errorf("detailID=%q status=%q", m.detailID, m.status)
+	}
+	if got := order(m); got != "aaa" {
+		t.Errorf("rows = %q", got)
+	}
+}
+
+func TestDetailStepSkipsTicketsArchivedOnDisk(t *testing.T) {
+	m, st := newModel(t, "aaa -", "bbb -", "ccc -")
+	m.lock = noopLock
+	key(m, tea.KeyEnter)
+	archiveOnDisk(t, st, "bbb")
+	press(m, "J") // the next shown ticket is ccc
+	if m.detailID != "ccc" || m.status != "" {
+		t.Errorf("J: detailID=%q status=%q", m.detailID, m.status)
+	}
+	press(m, "K")
+	if m.detailID != "aaa" {
+		t.Errorf("K: detailID=%q", m.detailID)
+	}
+	// The open ticket itself is archived: refreshing closes the detail view.
+	archiveOnDisk(t, st, "aaa")
+	press(m, "J")
+	if m.detailID != "" || m.status != "aaa is archived" {
+		t.Errorf("archived open ticket: detailID=%q status=%q", m.detailID, m.status)
+	}
+	if got := order(m); got != "ccc" || m.selected() != "ccc" {
+		t.Errorf("rows = %q on %s", got, m.selected())
+	}
+}
