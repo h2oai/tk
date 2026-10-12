@@ -207,8 +207,10 @@ func TestGenerateID(t *testing.T) {
 		}
 		seen[id] = true
 	}
-	if nc == 0 || nv == 0 {
-		t.Errorf("both stem shapes expected, got cvcvc=%d vcvcv=%d", nc, nv)
+	// Shapes are weighted by size, 19:5, so about 1583 of 2000 are CVCVC
+	// (sd ~18); a 50/50 pick would give about 1000.
+	if nc < 1400 || nc > 1750 || nv == 0 {
+		t.Errorf("stem shapes not weighted 19:5, got cvcvc=%d vcvcv=%d", nc, nv)
 	}
 	if len(seen) < 1900 {
 		t.Errorf("too many collisions: %d unique of 2000", len(seen))

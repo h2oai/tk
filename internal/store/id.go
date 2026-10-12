@@ -22,8 +22,15 @@ var stemPatterns = [2][5]string{
 // GenerateID returns a short pronounceable random ID: a CVCVC or VCVCV stem
 // followed by a digit 1-9 (e.g. "fanir7", "igoro8"). The digit guarantees an
 // ID is never a real word.
+//
+// A CVCVC stem has one more consonant and one fewer vowel than a VCVCV stem,
+// so the shapes hold stems in the ratio consonants:vowels (19:5). Picking the
+// shape with that weight makes every possible ID equally likely.
 func GenerateID() string {
-	pattern := stemPatterns[randomIndex(len(stemPatterns))]
+	pattern := stemPatterns[1]
+	if randomIndex(len(consonants)+len(vowels)) < len(consonants) {
+		pattern = stemPatterns[0]
+	}
 	var b strings.Builder
 	for _, set := range pattern {
 		b.WriteByte(set[randomIndex(len(set))])
