@@ -1023,6 +1023,36 @@ func TestArchive(t *testing.T) {
 			t.Errorf("err = %v", err)
 		}
 	})
+	t.Run("failed save leaves no archived ticket above a live one", func(t *testing.T) {
+		tr, st := build(t, "a:closed\n  a1:closed\n    a1x:closed\nb")
+		path := filepath.Join(st.Dir, "a1.md")
+		orig, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A non-empty directory in place of a1.md makes saving a1 fail.
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(path, "x"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tr.Archive("a", false, false); err == nil {
+			t.Fatal("expected save error")
+		}
+		if err := os.RemoveAll(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, orig, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := archivedIDs(t, st); !reflect.DeepEqual(got, []string{"a1x"}) {
+			t.Errorf("archived = %v", got)
+		}
+		if p := reloaded(t, st).Fsck(); len(p) != 0 {
+			t.Errorf("fsck: %v", p)
+		}
+	})
 }
 
 func TestArchiveClosed(t *testing.T) {

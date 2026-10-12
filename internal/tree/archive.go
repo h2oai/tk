@@ -75,9 +75,16 @@ func (t *Tree) setArchived(ids []string, on, dryRun bool) ([]*store.Ticket, erro
 	if dryRun || len(set) == 0 {
 		return set, nil
 	}
+	// Tickets are saved in the order they are touched. Archive bottom-up and
+	// unarchive top-down, so a save that fails midway never leaves an
+	// archived ticket above a live one.
+	saveOrder := slices.Clone(set)
+	if on {
+		slices.Reverse(saveOrder)
+	}
 	err := t.apply(func() error {
 		var changed []string
-		for _, tk := range set {
+		for _, tk := range saveOrder {
 			if on {
 				t.setStatus(tk.ID, store.StatusClosed, &changed)
 			}
