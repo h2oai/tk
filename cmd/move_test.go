@@ -116,7 +116,11 @@ func TestUndepFailures(t *testing.T) {
 	e := newEnv(t)
 	a, b, c := e.newT("A"), e.newT("B"), e.newT("C")
 	e.run("dep", a, b)
-	for _, arg := range []string{"zzzz", "", c, "a"} { // typo, empty, non-blocker, ambiguous partial
+	ambiguous := sharedLetter([]string{a, b, c})
+	for ids := []string{a, b, c}; ambiguous == ""; ambiguous = sharedLetter(ids) {
+		ids = append(ids, e.newT("X"))
+	}
+	for _, arg := range []string{"zzzz", "", c, ambiguous} { // typo, empty, non-blocker, ambiguous partial
 		_, errs, code := e.fail("undep", a, arg)
 		if code != ExitGeneric || errs == "" {
 			t.Errorf("undep %q: code %d errs %q", arg, code, errs)
@@ -247,4 +251,21 @@ func TestDepAndFsckWarnMisorder(t *testing.T) {
 	if out := e.run("fsck"); strings.TrimSpace(out) != "ok" {
 		t.Errorf("fsck: %q", out)
 	}
+}
+
+// sharedLetter returns a letter found in at least two of ids, so it is an
+// ambiguous partial id, or "" if there is none.
+func sharedLetter(ids []string) string {
+	for ch := 'a'; ch <= 'z'; ch++ {
+		n := 0
+		for _, id := range ids {
+			if strings.ContainsRune(id, ch) {
+				n++
+			}
+		}
+		if n >= 2 {
+			return string(ch)
+		}
+	}
+	return ""
 }
