@@ -154,10 +154,12 @@ func ResolveID(ids []string, partial string) (string, error) {
 // ROOT.md holds the ordered root ticket ids as YAML frontmatter only:
 //
 //	---
-//	roots: [fanir7, lovet2]
+//	roots:
+//	  - fanir7
+//	  - lovet2
 //	---
 type rootFile struct {
-	Roots flowList `yaml:"roots"`
+	Roots []string `yaml:"roots"`
 }
 
 // LoadRoots returns the ordered root ids. A missing ROOT.md means no roots.
@@ -193,7 +195,7 @@ func (s *Store) SaveRoots(roots []string) error {
 			return fmt.Errorf("invalid root id %q", id)
 		}
 	}
-	body, err := yaml.Marshal(rootFile{Roots: roots})
+	body, err := marshalYAML(rootFile{Roots: roots})
 	if err != nil {
 		return fmt.Errorf("marshal ROOT.md: %w", err)
 	}

@@ -24,6 +24,21 @@ func (l flowList) MarshalYAML() (any, error) {
 	return n, nil
 }
 
+// marshalYAML is yaml.Marshal with a 2-space indent, so block sequences
+// (children, roots) are written as "  - id" lines.
+func marshalYAML(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 type frontmatter struct {
 	ID        string    `yaml:"id"`
 	Status    Status    `yaml:"status"`
@@ -31,7 +46,7 @@ type frontmatter struct {
 	Effort    Effort    `yaml:"effort"`
 	Archived  bool      `yaml:"archived,omitempty"`
 	BlockedBy flowList  `yaml:"blocked-by,omitempty"`
-	Children  flowList  `yaml:"children,omitempty"`
+	Children  []string  `yaml:"children,omitempty"`
 	Created   time.Time `yaml:"created"`
 }
 
@@ -50,7 +65,7 @@ func Marshal(t *Ticket) ([]byte, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
-	fm, err := yaml.Marshal(frontmatter{
+	fm, err := marshalYAML(frontmatter{
 		ID:        t.ID,
 		Status:    t.Status,
 		Type:      t.Type,

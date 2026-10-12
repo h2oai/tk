@@ -66,9 +66,25 @@ func TestMarshalFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "---\nid: fanir7\nstatus: open\ntype: task\neffort: normal\nblocked-by: [lovet2]\nchildren: [kamop3, ritus9]\ncreated: 2026-10-05T12:00:00Z\n---\n# Title\n\nBody\n"
+	want := "---\nid: fanir7\nstatus: open\ntype: task\neffort: normal\nblocked-by: [lovet2]\nchildren:\n  - kamop3\n  - ritus9\ncreated: 2026-10-05T12:00:00Z\n---\n# Title\n\nBody\n"
 	if string(data) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", data, want)
+	}
+}
+
+// Files written before children and roots switched to block style still load.
+func TestFlowStyleLists(t *testing.T) {
+	tk, err := Unmarshal([]byte("---\nid: a1\nstatus: open\nchildren: [b2, c3]\ncreated: 2026-10-05T12:00:00Z\n---\n# Title\n"))
+	if err != nil || !reflect.DeepEqual(tk.Children, []string{"b2", "c3"}) {
+		t.Errorf("ticket: %v, %v", tk, err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ROOT.md"), []byte("---\nroots: [a1, b2]\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := New(dir).LoadRoots()
+	if err != nil || !reflect.DeepEqual(got, []string{"a1", "b2"}) {
+		t.Errorf("roots: %v, %v", got, err)
 	}
 }
 
@@ -371,8 +387,15 @@ func TestRootsEdgeCases(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "ROOT.md"))
-	if want := "---\nroots: [fanir7, lovet2]\n---\n"; string(data) != want {
+	if want := "---\nroots:\n  - fanir7\n  - lovet2\n---\n"; string(data) != want {
 		t.Errorf("ROOT.md = %q, want %q", data, want)
+	}
+	if err := s.SaveRoots(nil); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir, "ROOT.md"))
+	if want := "---\nroots: []\n---\n"; string(data) != want {
+		t.Errorf("empty ROOT.md = %q, want %q", data, want)
 	}
 }
 

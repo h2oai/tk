@@ -30,7 +30,9 @@ type: task              # task | bug | feature | chore (pure metadata; missing r
 effort: normal          # easy | normal | hard (pure metadata; missing reads as normal)
 archived: true          # optional; written only when true (see Archival)
 blocked-by: [lovet2]
-children: [kamop3, ritus9]   # ordered; first is picked up first
+children:               # ordered; first is picked up first
+  - kamop3
+  - ritus9
 created: 2026-10-05T12:00:00Z
 ---
 # Title
@@ -39,6 +41,7 @@ Body text, notes appended as timestamped sections.
 ```
 
 - Frontmatter is parsed strictly: unknown keys make a ticket unreadable. A `tk` binary older than a field (such as `effort`) therefore cannot read tickets written by a newer one; upgrade the binary.
+- `children` and `ROOT.md`'s `roots` are written as block lists (one `  - id` line each) so a checked-in `.tickets/` diffs and merges line by line; `blocked-by` is written inline (`[a, b]`). Either style parses; a file is rewritten in the current style the next time `tk` saves it.
 - The hierarchy is stored **only** in `children` lists and `ROOT.md`. A child does not store its parent; the parent is derived by scanning.
 - Archived tickets stay in `.tickets/` and keep their place in the tree; only the `archived: true` key marks them (see [Archival](#archival)).
 - IDs are pronounceable five-letter stems followed by a digit 1–9 (e.g. `fanir7`, `igoro8`). The stem is either CVCVC (consonant-vowel-consonant-vowel-consonant) or VCVCV (vowel-consonant-vowel-consonant-vowel), chosen randomly; Q and X are excluded from consonants, and 0 is excluded from digits to avoid confusion with letters. Partial matching: exact match first, then substring; error on zero or multiple matches.

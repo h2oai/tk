@@ -152,7 +152,9 @@ status: open
 type: task
 effort: normal
 blocked-by: [lovet2]
-children: [kamop3, ritus9]
+children:
+  - kamop3
+  - ritus9
 created: 2026-10-05T12:00:00Z
 ---
 # Title
@@ -160,7 +162,7 @@ created: 2026-10-05T12:00:00Z
 Body text; notes are appended as timestamped sections.
 ```
 
-`ROOT.md` holds `roots: [id, ...]`. The hierarchy lives only in `children` lists and `ROOT.md`; a child does not store its parent. Ids are short pronounceable strings (e.g. `fanir7`).
+`ROOT.md` holds the ordered `roots` list. `children` and `roots` are written one id per line so concurrent edits merge line by line; `blocked-by` stays inline. The hierarchy lives only in `children` lists and `ROOT.md`; a child does not store its parent. Ids are short pronounceable strings (e.g. `fanir7`).
 
 ## Development
 
