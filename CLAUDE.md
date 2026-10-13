@@ -106,7 +106,7 @@ go run main.go [command]   # run without building
 
 - `AGENT_INSTRUCTIONS.md` is the guide agents read to use `tk`. When a command, flag or output format is added, changed or removed, update it alongside `docs/spec.md` and `README.md`.
 
-- Go modules (`go 1.25.5` in `go.mod`)
+- Go modules (`go 1.26.0` in `go.mod`)
 - Dependencies: `spf13/cobra` (CLI), `gopkg.in/yaml.v3` (YAML)
 - Tickets directory defaults to `.tickets`, override with `--dir`
 - Errors use `fmt.Errorf()` with `%w`
