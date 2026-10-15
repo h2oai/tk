@@ -230,6 +230,26 @@ func TestReadyExitCodes(t *testing.T) {
 	}
 }
 
+func TestShowDefaultsToReady(t *testing.T) {
+	e := newEnv(t)
+	a := e.newT("Alpha")
+	b := e.newT("Beta")
+	contains(t, e.run("show"), "id:       "+a)
+
+	e.block(a, b)
+	out, _, code := e.fail("show")
+	if code != 2 || !strings.HasPrefix(out, "blocked: "+a) {
+		t.Errorf("blocked: %d %q", code, out)
+	}
+
+	e.run("close", a)
+	e.run("close", b)
+	out, errs, code := e.fail("show")
+	if code != 1 || out != "" || !strings.Contains(errs, "nothing left") {
+		t.Errorf("nothing left: %d %q %q", code, out, errs)
+	}
+}
+
 func TestReadyScope(t *testing.T) {
 	e := newEnv(t)
 	a := e.newT("A")
@@ -283,7 +303,7 @@ func TestExitErrorType(t *testing.T) {
 func TestGenericErrorsAvoidReadyCodes(t *testing.T) {
 	e := newEnv(t)
 	e.run("new", "x")
-	for _, args := range [][]string{{"ready", "zzzz"}, {"show", "zzzz"}, {"bogus"}, {"ls", "--nope"}, {"show"}} {
+	for _, args := range [][]string{{"ready", "zzzz"}, {"show", "zzzz"}, {"bogus"}, {"ls", "--nope"}, {"show", "a", "b"}} {
 		_, _, code := e.fail(args...)
 		if code != ExitGeneric || code == 0 || code == 1 || code == 2 {
 			t.Errorf("tk %v: code %d", args, code)

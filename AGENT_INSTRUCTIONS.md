@@ -5,7 +5,7 @@ partial.
 
 ```bash
 tk ready [epic]                  # next: "<id> <pos> [<type>/<effort>] <title>"
-tk show <id>                     # read it
+tk show [id]                     # read it (no id: the ready ticket)
 tk start <id>                    # claim (in_progress)
 tk note <id> "..."               # record progress / decisions
 tk close <id>                    # finish, then tk ready again

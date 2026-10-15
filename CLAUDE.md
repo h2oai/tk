@@ -19,7 +19,7 @@ go run main.go [command]   # run without building
 ```bash
 ./tk new "Title" [--type T] [-e E] [--under P] [--at N]   # Create a ticket (prints id)
 ./tk ls [--all] [--archived] [id]       # Outline of the tree with positions
-./tk show <partial-id>                  # Show ticket details
+./tk show [partial-id]                  # Show ticket details (default: the ready ticket)
 ./tk ready [epic]                       # Highest ready leaf (exit 0/1/2, 3 on error)
 ./tk type <id> <task|bug|feature|chore>  # set type
 ./tk effort <id> <easy|normal|hard>      # set expected effort

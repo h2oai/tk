@@ -11,16 +11,24 @@ func init() { register(newShowCmd) }
 
 func newShowCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:         "show <id>",
+		Use:         "show [id]",
 		Annotations: map[string]string{lockAnnotation: lockShared},
-		Short:       "Show a ticket in full",
-		Args:        cobra.ExactArgs(1),
+		Short:       "Show a ticket in full (default: the ticket tk ready picks)",
+		Args:        cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, ids, err := app.LoadResolved(args[0])
+			t, err := app.LoadTree()
 			if err != nil {
 				return err
 			}
-			id := ids[0]
+			var id string
+			if len(args) == 1 {
+				id, err = t.Resolve(args[0])
+			} else {
+				id, err = readyID(cmd.OutOrStdout(), t, "")
+			}
+			if err != nil {
+				return err
+			}
 			tk := t.Get(id)
 			var b strings.Builder
 			fmt.Fprintf(&b, "# %s\n", tk.Title)
