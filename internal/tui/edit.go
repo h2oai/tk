@@ -79,7 +79,7 @@ func (m *Model) refresh(id string, top bool) {
 		m.closeDetail()
 		return
 	}
-	m.detail = renderDetail(m.t, m.detailID, m.width)
+	m.detail = m.renderDetail(m.detailID)
 	if top {
 		m.scroll = 0
 	}

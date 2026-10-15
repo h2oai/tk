@@ -118,7 +118,7 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>/<effort>] <title>
 |---|---|
 | `tk new <title> [--type T] [-e\|--effort E] [--under P] [--at N \| --before X \| --after X] [-b body \| -b - \| -F file]` | Create a ticket, print its id. `--type` is `task` (default), `bug`, `feature` or `chore`; `--effort` is `easy`, `normal` (default) or `hard`. Default: last child of `P`, or last root. |
 | `tk ls [--all] [--archived] [id]` | Outline with positions (e.g. `2.1.3`) and each ticket's `[type/effort]`. Closed subtrees hidden unless `--all`; archived tickets hidden unless `--archived` (implies `--all`). |
-| `tk show [id]` | Title, body, status, type, effort, blockers, children, position. Without an id, shows the ticket `tk ready` picks (same exit codes 1/2 when there is none). |
+| `tk show [-p] [id]` | Title, body, status, type, effort, blockers, children, position. Without an id, shows the ticket `tk ready` picks (same exit codes 1/2 when there is none). `--pretty`/`-p` renders it as formatted markdown. |
 | `tk type <id> <task\|bug\|feature\|chore>` | Set the ticket's type. |
 | `tk effort <id> <easy\|normal\|hard>` | Set the ticket's expected effort. |
 | `tk edit <id>` | Open in `$EDITOR` (writes nothing if saved unchanged). |

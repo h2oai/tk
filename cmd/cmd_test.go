@@ -250,6 +250,22 @@ func TestShowDefaultsToReady(t *testing.T) {
 	}
 }
 
+func TestShowPretty(t *testing.T) {
+	e := newEnv(t)
+	a := e.newT("Alpha", "-b", "alpha body")
+	plain := e.run("show", a)
+	// Tests are not on a terminal, so glamour uses its uncoloured layout.
+	for _, args := range [][]string{{"show", "--pretty", a}, {"show", "-p"}} {
+		out := e.run(args...)
+		if out == plain || strings.Contains(out, "\x1b[") {
+			t.Errorf("%v: want rendered text without escape codes, got:\n%s", args, out)
+		}
+		for _, want := range []string{"# Alpha", "**id:** " + a, "**effort:** normal", "alpha body"} {
+			contains(t, out, want)
+		}
+	}
+}
+
 func TestReadyScope(t *testing.T) {
 	e := newEnv(t)
 	a := e.newT("A")

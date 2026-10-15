@@ -234,8 +234,8 @@ func TestEnterOpensDetailAndEscReturns(t *testing.T) {
 	if m.detailID != "bbb" {
 		t.Fatalf("detailID = %q, want bbb", m.detailID)
 	}
-	if v := stripANSI(m.View()); !strings.Contains(v, "T bbb") || !strings.Contains(v, "esc back") {
-		t.Errorf("detail view missing title/help:\n%s", v)
+	if v := stripANSI(m.View()); !strings.Contains(v, "T bbb") || !strings.Contains(v, "effort: normal") || !strings.Contains(v, "esc back") {
+		t.Errorf("detail view missing title/effort/help:\n%s", v)
 	}
 	press(m, "H", "L") // reorder keys are ignored in the detail view
 	if order(m) != "aaa bbb" {

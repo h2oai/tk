@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/glamour"
+	"github.com/h2oai/tk/internal/render"
 	"github.com/spf13/cobra"
 )
 
 func init() { register(newShowCmd) }
 
 func newShowCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var pretty bool
+	c := &cobra.Command{
 		Use:         "show [id]",
 		Annotations: map[string]string{lockAnnotation: lockShared},
 		Short:       "Show a ticket in full (default: the ticket tk ready picks)",
@@ -28,6 +31,14 @@ func newShowCmd(app *App) *cobra.Command {
 			}
 			if err != nil {
 				return err
+			}
+			if pretty {
+				out, err := render.Render(t, id, glamour.WithAutoStyle())
+				if err != nil {
+					return err
+				}
+				fmt.Fprint(cmd.OutOrStdout(), out)
+				return nil
 			}
 			tk := t.Get(id)
 			var b strings.Builder
@@ -67,4 +78,6 @@ func newShowCmd(app *App) *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVarP(&pretty, "pretty", "p", false, "render as formatted markdown for reading")
+	return c
 }

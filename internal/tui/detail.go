@@ -1,67 +1,25 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
-	"github.com/h2oai/tk/internal/tree"
+	"github.com/h2oai/tk/internal/render"
 )
 
 const detailHelp = "j/k scroll  pgup/pgdn page  g/G top/bottom  J/K or ←/→ next/prev  e edit  esc back"
 
-// markdown builds the document shown in the detail view: heading, metadata,
-// children, then the ticket body.
-func markdown(t *tree.Tree, id string) string {
-	tk := t.Get(id)
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", tk.Title)
-	fmt.Fprintf(&b, "- **id:** %s\n", id)
-	fmt.Fprintf(&b, "- **status:** %s\n", tk.Status)
-	fmt.Fprintf(&b, "- **type:** %s\n", tk.Type)
-	if tk.Archived {
-		b.WriteString("- **archived:** true\n")
-	}
-	fmt.Fprintf(&b, "- **position:** %s\n", t.Position(id))
-	if p := t.Parent(id); p != "" {
-		fmt.Fprintf(&b, "- **parent:** %s %q\n", p, t.Get(p).Title)
-	}
-	fmt.Fprintf(&b, "- **created:** %s\n", tk.Created.Format("2006-01-02T15:04:05Z"))
-	if len(tk.BlockedBy) > 0 {
-		b.WriteString("- **blocked-by:**\n")
-		for _, d := range tk.BlockedBy {
-			if dt := t.Get(d); dt != nil {
-				fmt.Fprintf(&b, "  - %s %q (%s, %s)\n", d, dt.Title, t.Position(d), dt.Status)
-			} else {
-				fmt.Fprintf(&b, "  - %s (missing)\n", d)
-			}
-		}
-	}
-	if kids := t.Children(id); len(kids) > 0 {
-		b.WriteString("\n## Children\n\n")
-		for _, c := range kids {
-			fmt.Fprintf(&b, "- %s %s %s  %s\n", t.Position(c), t.Get(c).Marker(), c, t.Get(c).Title)
-		}
-	}
-	if body := strings.TrimSpace(tk.Body); body != "" {
-		fmt.Fprintf(&b, "\n---\n\n%s\n", body)
-	}
-	return b.String()
-}
-
-// renderDetail renders the ticket's markdown wrapped to width. If glamour
-// fails it falls back to the raw markdown.
-func renderDetail(t *tree.Tree, id string, width int) []string {
-	md := markdown(t, id)
+// renderDetail renders the ticket wrapped to width in the model's style. If
+// glamour fails it falls back to the raw markdown.
+func (m *Model) renderDetail(id string) []string {
+	width := m.width
 	if width <= 0 {
 		width = 80
 	}
-	out := md
-	if r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(width)); err == nil {
-		if s, err := r.Render(md); err == nil {
-			out = s
-		}
+	out, err := render.Render(m.t, id, glamour.WithStandardStyle(m.style), glamour.WithWordWrap(width))
+	if err != nil {
+		out = render.Markdown(m.t, id)
 	}
 	return strings.Split(strings.Trim(out, "\n"), "\n")
 }
@@ -95,7 +53,7 @@ func (m *Model) reload(id string) bool {
 func (m *Model) show(id string) {
 	m.status = ""
 	m.detailID = id
-	m.detail = renderDetail(m.t, id, m.width)
+	m.detail = m.renderDetail(id)
 	m.scroll = 0
 }
 

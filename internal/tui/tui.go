@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour/styles"
+	"github.com/h2oai/tk/internal/render"
 	"github.com/h2oai/tk/internal/tree"
 )
 
@@ -33,6 +35,7 @@ type Model struct {
 	detailID string   // ticket shown in the detail view, "" for the list
 	detail   []string // rendered lines of the detail view
 	scroll   int      // first visible line of the detail view
+	style    string   // glamour style for the detail view
 	status   string
 	lock     Locker
 	exec     execFunc // runs the editor; tea.ExecProcess outside tests
@@ -46,14 +49,18 @@ type Locker func(exclusive bool) (unlock func(), err error)
 // the tree from disk and then applies the change, so edits made by other tk
 // processes since the last key are neither lost nor overwritten.
 func New(t *tree.Tree, lock Locker) *Model {
-	m := &Model{t: t, lock: lock, exec: tea.ExecProcess}
+	m := &Model{t: t, lock: lock, exec: tea.ExecProcess, style: styles.DarkStyle}
 	m.rebuild()
 	return m
 }
 
-// Run starts the program on the terminal and blocks until it quits.
+// Run starts the program on the terminal and blocks until it quits. The detail
+// view's style follows the terminal background, detected before the program
+// starts so the query does not race Bubble Tea for input.
 func Run(t *tree.Tree, lock Locker) error {
-	_, err := tea.NewProgram(New(t, lock), tea.WithAltScreen()).Run()
+	m := New(t, lock)
+	m.style = render.TerminalStyle()
+	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
 
@@ -142,7 +149,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.height, m.width = msg.Height, msg.Width
 		if m.detailID != "" {
-			m.detail = renderDetail(m.t, m.detailID, m.width)
+			m.detail = m.renderDetail(m.detailID)
 			m.scrollBy(0)
 		}
 	case editDoneMsg:

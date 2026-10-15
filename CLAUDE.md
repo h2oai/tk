@@ -19,7 +19,7 @@ go run main.go [command]   # run without building
 ```bash
 ./tk new "Title" [--type T] [-e E] [--under P] [--at N]   # Create a ticket (prints id)
 ./tk ls [--all] [--archived] [id]       # Outline of the tree with positions
-./tk show [partial-id]                  # Show ticket details (default: the ready ticket)
+./tk show [-p] [partial-id]             # Show ticket details (default: the ready ticket; -p renders with glamour)
 ./tk ready [epic]                       # Highest ready leaf (exit 0/1/2, 3 on error)
 ./tk type <id> <task|bug|feature|chore>  # set type
 ./tk effort <id> <easy|normal|hard>      # set expected effort
@@ -88,9 +88,11 @@ go run main.go [command]   # run without building
 - `archive.go`: archive/unarchive (set the `archived` flag on subtrees)
 - `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations, archived invariants)
 
+**`internal/render/`**: `Markdown` builds a ticket's markdown document and `Render` renders it with glamour; shared by `tk show --pretty` (`glamour.WithAutoStyle()`, glamour's default wrap) and the TUI detail view. `TerminalStyle` picks dark or light from the terminal background; the TUI calls it once in `Run`, before Bubble Tea reads input.
+
 **`internal/edit/`**: `$EDITOR` round trip shared by `tk edit` and the TUI. `Start` reads the ticket's raw file (`Tree.Raw`) under a shared lock into a temp file; `Finish` validates it, writes nothing if it is byte-identical (`unchanged`), refuses if the file changed on disk meanwhile, and saves via `Tree.Replace` under an exclusive lock. `Replace` refuses any change to `status`, `archived`, `children` or `blocked-by` (pointing at `start/close/reopen`, `archive/unarchive`, `mv`, `dep/undep`), so edits never bypass the tree rules; title, body, type, effort and `created` are free.
 
-**`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: its own markdown formatter rendered with glamour, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. `e` (list or detail view, `edit.go`) is the only way it changes ticket contents: it hands the file to `$EDITOR` through `internal/edit`, the same code as `tk edit`, via `tea.ExecProcess` (tests swap the unexported `Model.exec`). There are no create, delete, status, type, archive or dep keys; archived tickets are never listed. Tests drive `Model.Update` in-process.
+**`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: `internal/render`'s document wrapped to the window width, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. `e` (list or detail view, `edit.go`) is the only way it changes ticket contents: it hands the file to `$EDITOR` through `internal/edit`, the same code as `tk edit`, via `tea.ExecProcess` (tests swap the unexported `Model.exec`). There are no create, delete, status, type, archive or dep keys; archived tickets are never listed. Tests drive `Model.Update` in-process.
 
 ### Key Design Patterns
 
