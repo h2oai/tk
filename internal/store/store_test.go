@@ -190,8 +190,9 @@ func TestParseStatus(t *testing.T) {
 func TestGenerateID(t *testing.T) {
 	cvcvc := regexp.MustCompile(`^[` + consonants + `][` + vowels + `][` + consonants + `][` + vowels + `][` + consonants + `][1-9]$`)
 	vcvcv := regexp.MustCompile(`^[` + vowels + `][` + consonants + `][` + vowels + `][` + consonants + `][` + vowels + `][1-9]$`)
+	cvccv := regexp.MustCompile(`^[` + consonants + `][` + vowels + `][` + sonorants + `][` + consonants + `][` + vowels + `][1-9]$`)
 	seen := map[string]bool{}
-	var nc, nv int
+	var nc, nv, ncc int
 	for range 2000 {
 		id := GenerateID()
 		switch {
@@ -199,6 +200,8 @@ func TestGenerateID(t *testing.T) {
 			nc++
 		case vcvcv.MatchString(id):
 			nv++
+		case cvccv.MatchString(id):
+			ncc++
 		default:
 			t.Fatalf("bad id %q", id)
 		}
@@ -207,10 +210,11 @@ func TestGenerateID(t *testing.T) {
 		}
 		seen[id] = true
 	}
-	// Shapes are weighted by size, 19:5, so about 1583 of 2000 are CVCVC
-	// (sd ~18); a 50/50 pick would give about 1000.
-	if nc < 1400 || nc > 1750 || nv == 0 {
-		t.Errorf("stem shapes not weighted 19:5, got cvcvc=%d vcvcv=%d", nc, nv)
+	// Shapes are weighted by size, 19:5:5, so about 1310 of 2000 are CVCVC
+	// (sd ~21) and 345 each VCVCV and CVCCV (sd ~17); equal thirds would give
+	// about 667 each.
+	if nc < 1150 || nc > 1470 || nv < 220 || nv > 470 || ncc < 220 || ncc > 470 {
+		t.Errorf("stem shapes not weighted 19:5:5, got cvcvc=%d vcvcv=%d cvccv=%d", nc, nv, ncc)
 	}
 	if len(seen) < 1900 {
 		t.Errorf("too many collisions: %d unique of 2000", len(seen))
