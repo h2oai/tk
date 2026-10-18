@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style>
+:root { --bg: #fff; --fg: #1f2328; --muted: #6e7781; --link: #0969da; --hi: #fff8c5; --warn: #9a6700; --line: #d0d7de; --prog: #bf8700; --code: #f6f8fa; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --link: #4493f8; --hi: #2e2a14; --warn: #d29922; --line: #30363d; --prog: #d29922; --code: #161b22; }
+}
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; max-width: 60rem; margin: 0 auto; padding: 1rem; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav { display: flex; gap: 1rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: .5rem; margin-bottom: 1rem; }
+nav b { color: var(--fg); }
+.banner { color: var(--warn); }
+.ready { margin: 0 0 1rem; }
+.outline { font-family: ui-monospace, monospace; font-size: 14px; }
+.row { padding: 1px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row.top { background: var(--hi); }
+.pos, .tag, .s-closed .title, .archived .title { color: var(--muted); }
+.s-in_progress .mark { color: var(--prog); font-weight: bold; }
+.deps { color: var(--warn); }
+pre, code { font-family: ui-monospace, monospace; font-size: 13px; }
+pre { background: var(--code); padding: .5rem; overflow-x: auto; }
+hr { border: 0; border-top: 1px solid var(--line); }
+table { border-collapse: collapse; }
+th, td { border: 1px solid var(--line); padding: 2px 8px; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/">outline</a>
+  {{- with .Filter}}
+  <span>show: {{if eq . "open"}}<b>open</b>{{else}}<a href="/">open</a>{{end}}
+    · {{if eq . "all"}}<b>all</b>{{else}}<a href="/?all">all</a>{{end}}
+    · {{if eq . "archived"}}<b>archived</b>{{else}}<a href="/?archived">archived</a>{{end}}</span>
+  {{- end}}
+  {{- if .Problems}}<span class="banner">{{.Problems}} problem(s); run <code>tk fsck</code></span>{{end}}
+</nav>
+{{- if .Err}}
+<h1>{{.Title}}</h1>
+<p>{{.Err}}</p>
+{{- else if .Doc}}
+{{.Doc}}
+{{- else}}
+{{- with .Ready}}
+<p class="ready">
+{{- if .Block}}blocked: <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a> “{{.Ticket.Title}}” waits on <a href="/t/{{.Block.Blocker.ID}}">{{.Block.Blocker.ID}}</a> “{{.Block.Blocker.Title}}” ({{.Block.BlockerPos}}, {{.Block.Blocker.Status}})
+{{- else if .Ticket}}ready: <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a> {{.Pos}} [{{.Ticket.Type}}/{{.Ticket.Effort}}] {{.Ticket.Title}}
+{{- else}}nothing left to do{{end}}</p>
+{{- end}}
+<div class="outline">
+{{- range .Rows}}
+<div class="row s-{{.Ticket.Status}}{{if .Ticket.Archived}} archived{{end}}{{if .Ready}} top{{end}}" style="padding-left: calc({{.Depth}} * 2ch + 4px)">
+  <span class="pos">{{.Pos}}</span> <span class="mark">{{.Ticket.Marker}}</span> <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a>
+  <span class="tag">[{{.Ticket.Type}}/{{.Ticket.Effort}}]</span> <span class="title">{{.Ticket.Title}}</span>
+  {{- with .Blockers}} <span class="deps">← {{range $i, $b := .}}{{if $i}}, {{end}}<a href="/t/{{$b}}">{{$b}}</a>{{end}}</span>{{end}}
+</div>
+{{- end}}
+</div>
+{{- end}}
+</body>
+</html>

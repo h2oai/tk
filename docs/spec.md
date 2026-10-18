@@ -45,7 +45,7 @@ Body text, notes appended as timestamped sections.
 - The hierarchy is stored **only** in `children` lists and `ROOT.md`. A child does not store its parent; the parent is derived by scanning.
 - Archived tickets stay in `.tickets/` and keep their place in the tree; only the `archived: true` key marks them (see [Archival](#archival)).
 - IDs are pronounceable five-letter stems followed by a digit 1–9 (e.g. `fanir7`, `igoro8`, `banto3`). The stem is CVCVC (consonant-vowel-consonant-vowel-consonant), VCVCV (vowel-consonant-vowel-consonant-vowel) or CVCCV (consonant-vowel-consonant-consonant-vowel, where the first consonant of the cluster is one of L, M, N, R, S), weighted by size so every id is equally likely (2,355,525 possible ids); Q and X are excluded from consonants, and 0 is excluded from digits to avoid confusion with letters. Partial matching: exact match first, then substring; error on zero or multiple matches.
-- Concurrency: every command takes an advisory `flock` on `.tickets/.lock` (exclusive for commands that write, shared for `ls`, `show`, `ready`, `fsck`) for its whole load-modify-save cycle, waiting up to 5 seconds. The lock is released when the process exits, so crashes leave nothing stale. `edit` (and the TUI's `e`) locks only while reading and saving (and refuses to save if the ticket changed meanwhile); `tui` locks and reloads from disk on each reorder. The `.lock` file can be gitignored. This serializes writers but does not claim tickets: two workers asking `tk ready` still get the same ticket.
+- Concurrency: every command takes an advisory `flock` on `.tickets/.lock` (exclusive for commands that write, shared for `ls`, `show`, `ready`, `fsck`) for its whole load-modify-save cycle, waiting up to 5 seconds. The lock is released when the process exits, so crashes leave nothing stale. `edit` (and the TUI's `e`) locks only while reading and saving (and refuses to save if the ticket changed meanwhile); `tui` locks and reloads from disk on each reorder; `serve` takes the shared lock per request while it reads the tree. The `.lock` file can be gitignored. This serializes writers but does not claim tickets: two workers asking `tk ready` still get the same ticket.
 - Writes are atomic (temp file then rename). `mv` edits up to three files (old parent, new parent, and the moved ticket is untouched).
 - `tk` directory defaults to `.tickets`, override with `--dir`.
 
@@ -99,6 +99,7 @@ Output on success is `<id> <position> [<type>/<effort>] <title>`, e.g. `fanir7 1
 | `tk mv <id> --under P --at N` (also `--before/--after <id>`) | Reparent and/or reposition. `--at N` counts only siblings that are not archived. |
 | `tk up/down/top/bottom <id>` | Move within siblings, hopping over archived ones. |
 | `tk tui` | Interactive reorder: `j/k` move the cursor, `J/K` down/up among siblings, `H/L` outdent/indent, `g/G` top/bottom among siblings, `enter` open the selected ticket in a read-only, scrollable detail view rendered with glamour (`j/k`, `pgup/pgdn`, `g/G` scroll; `J/K` or `→/←` next/previous ticket in list order; `esc` or `q` back), `e` (list or detail view) edit the ticket in `$EDITOR` with `tk edit`'s rules, after which the detail view re-renders from the top, `q` quit. Archived tickets are never listed. Changes apply immediately through the same checks as `tk mv`; errors show in the status line. It changes ticket contents only through `e`. |
+| `tk serve [--addr A]` | Serve a read-only web view on `A` (default `127.0.0.1:7777`) until interrupted; prints the URL. `/` is the outline as `ls` shows it (closed subtrees and archived tickets hidden; `/?all` and `/?archived` match the flags) under the line `ready` would print, with that ticket highlighted. `/t/<id>` renders the `show --pretty` document as HTML, with every whole word that is a ticket id (archived ones included) linked to `/t/<id>`, except inside code, links, URLs and HTML; a partial id redirects to the full one. Every request re-reads the tickets, so a refresh shows the current state; pages show a banner when `fsck` finds problems. Raw HTML in ticket bodies is dropped. On a loopback address, requests whose `Host` is not `localhost` or a loopback IP are refused (DNS rebinding). Fails at startup without a tickets directory. |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage `blocked-by`. |
 | `tk rm <id>` | Refuses if the ticket has children or is anyone's blocker. `--force` deletes the subtree and detaches deps. |
 | `tk archive <id> [--force] [-n]` | Mark the closed subtree archived (see [Archival](#archival)). |
@@ -156,7 +157,7 @@ output with `would archive` / `would unarchive` in place of `archived` /
 
 How the other commands treat archived tickets:
 
-- **Visibility**: `ls` and the TUI hide them; `ls --archived` shows them with
+- **Visibility**: `ls`, `serve`'s outline and the TUI hide them; `ls --archived` (and `/?archived`) shows them with
   marker `[a]`. They take no position: positions count only tickets that are not
   archived, so numbering stays dense, and an archived ticket shows `-`.
 - **Ids**: they resolve like any ticket (`show`, `edit`, `note`, `dep`, …), so a

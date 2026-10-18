@@ -32,13 +32,13 @@ func newLsCmd(app *App) *cobra.Command {
 				}
 				roots = []string{id}
 			}
-			f := filter{all: all || archived, archived: archived}
-			if len(args) == 1 && !f.archived && t.IsArchived(roots[0]) {
+			f := tree.Filter{All: all || archived, Archived: archived}
+			if len(args) == 1 && !f.Archived && t.IsArchived(roots[0]) {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%s is archived; use --archived to show it\n", roots[0])
 			}
 			w := cmd.OutOrStdout()
 			for _, id := range roots {
-				if t.Get(id) != nil && (len(args) == 1 && !t.IsArchived(id) || f.shows(t, id)) {
+				if t.Get(id) != nil && (len(args) == 1 && !t.IsArchived(id) || f.Shows(t, id)) {
 					writeOutline(w, t, id, 0, f)
 				}
 			}
@@ -53,15 +53,7 @@ func newLsCmd(app *App) *cobra.Command {
 	return c
 }
 
-// filter says which subtrees ls prints: closed ones only with all, archived
-// ones only with archived.
-type filter struct{ all, archived bool }
-
-func (f filter) shows(t *tree.Tree, id string) bool {
-	return (f.archived || !t.IsArchived(id)) && (f.all || !t.SubtreeClosed(id))
-}
-
-func writeOutline(w io.Writer, t *tree.Tree, id string, depth int, f filter) {
+func writeOutline(w io.Writer, t *tree.Tree, id string, depth int, f tree.Filter) {
 	tk := t.Get(id)
 	line := fmt.Sprintf("%s%s %s %s  %s", strings.Repeat("  ", depth), t.Position(id), tk.Marker(), id, titleWithType(tk))
 	if open := openBlockers(t, tk); len(open) > 0 {
@@ -69,7 +61,7 @@ func writeOutline(w io.Writer, t *tree.Tree, id string, depth int, f filter) {
 	}
 	fmt.Fprintln(w, line)
 	for _, c := range t.Children(id) {
-		if f.shows(t, c) {
+		if f.Shows(t, c) {
 			writeOutline(w, t, c, depth+1, f)
 		}
 	}

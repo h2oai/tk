@@ -83,6 +83,10 @@ For example:
 
 `tk tui` opens a keyboard UI for reordering the tree: `j`/`k` move the cursor, `J`/`K` move a ticket down/up among its siblings, `H`/`L` outdent/indent, `g`/`G` move it first/last among its siblings, `Enter` opens the selected ticket in a read-only detail view (`j`/`k` scroll, `g`/`G` top/bottom, `Esc` or `q` back), `e` (in either view) opens the ticket in `$EDITOR` like `tk edit`, and `q` quits. Every change is applied immediately through the same checks as `tk mv`, and errors appear in the status line. The TUI changes ticket contents only through `e`.
 
+## Web view
+
+`tk serve` starts a read-only web view at <http://127.0.0.1:7777/> (`--addr` to change it). `/` shows the outline like `tk ls`, with the ready ticket highlighted and links to show closed and archived tickets; `/t/<id>` shows one ticket, with every ticket id in its text linked. Pages re-read `.tickets` on every request, so refresh to see changes.
+
 ## Ticket readiness
 
 `tk ready` finds the next available ticket to work on.
@@ -128,6 +132,7 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>/<effort>] <title>
 | `tk mv <id> [--under P \| --root] [--at N \| --before X \| --after X]` | Reparent and/or reposition. |
 | `tk up` / `down` / `top` / `bottom <id>` | Move among siblings. |
 | `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `Enter` view ticket (`Esc` back), `e` edit in `$EDITOR`, `q` quit. |
+| `tk serve [--addr A]` | Read-only web view of the tree and tickets (default `127.0.0.1:7777`). |
 | `tk dep <id> <blocker>` / `tk undep <id> <blocker>` | Manage blockers. `undep` fails (exit 3) if the blocker is not currently listed. |
 | `tk rm <id> [--force]` | Refuses if the ticket has children or blocks others; `--force` deletes the subtree and detaches deps. |
 | `tk archive <id> [--force]` | Mark a fully closed subtree `archived: true` (`--force` closes it first). Files stay in `.tickets/` and keep their place in the tree; `ls`, the TUI and positions skip them, and `start`/`reopen` refuse them. |

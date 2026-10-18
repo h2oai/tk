@@ -38,7 +38,7 @@ EOF
   never changes what `tk ready` returns.
 - Archived tickets (`[a]`, position `-`) are hidden from `tk ls` unless `--archived`, and can't
   be started or reopened; `tk unarchive <id>` first.
-- Never run `tk tui` (human-only). Positions are display only; pass ids.
+- Never run `tk tui` or `tk serve` (human-only). Positions are display only; pass ids.
 
 ### Critical Rules
 

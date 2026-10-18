@@ -32,6 +32,7 @@ go run main.go [command]   # run without building
 ./tk unarchive <id> [-n]                # clear the flag on subtree + archived ancestors
 ./tk fsck                               # integrity check
 ./tk tui                                # interactive reorder + read-only detail view (enter/esc) + $EDITOR (e)
+./tk serve [--addr 127.0.0.1:7777]      # read-only web view: outline at /, tickets at /t/<id>
 ```
 
 ## Architecture
@@ -71,6 +72,7 @@ go run main.go [command]   # run without building
 - `rm.go`, fsck command
 - `archive.go`: `archive`, `unarchive`
 - `tui.go`: `tui` (loads the tree and starts `internal/tui`)
+- `serve.go`: `serve` (listens and serves `internal/web`, wrapped in `web.LocalOnly` on a loopback address)
 - `textinput.go`: free-form text contract (inline, `-` for stdin, `-F` file)
 
 **`internal/store/`**: file persistence only.
@@ -88,15 +90,17 @@ go run main.go [command]   # run without building
 - `archive.go`: archive/unarchive (set the `archived` flag on subtrees)
 - `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations, archived invariants)
 
-**`internal/render/`**: `Markdown` builds a ticket's markdown document and `Render` renders it with glamour; shared by `tk show --pretty` (`glamour.WithAutoStyle()`, glamour's default wrap) and the TUI detail view. `TerminalStyle` picks dark or light from the terminal background; the TUI calls it once in `Run`, before Bubble Tea reads input.
+**`internal/render/`**: `Markdown` builds a ticket's markdown document and `Render` renders it with glamour; shared by `tk show --pretty` (`glamour.WithAutoStyle()`, glamour's default wrap), the TUI detail view and the web ticket page. `Linkify` (`link.go`) turns whole-word ids into markdown links, skipping code, links, URLs and HTML; the web view uses it with `/t/<id>` targets. `TerminalStyle` picks dark or light from the terminal background; the TUI calls it once in `Run`, before Bubble Tea reads input.
 
 **`internal/edit/`**: `$EDITOR` round trip shared by `tk edit` and the TUI. `Start` reads the ticket's raw file (`Tree.Raw`) under a shared lock into a temp file; `Finish` validates it, writes nothing if it is byte-identical (`unchanged`), refuses if the file changed on disk meanwhile, and saves via `Tree.Replace` under an exclusive lock. `Replace` refuses any change to `status`, `archived`, `children` or `blocked-by` (pointing at `start/close/reopen`, `archive/unarchive`, `mv`, `dep/undep`), so edits never bypass the tree rules; title, body, type, effort and `created` are free.
 
 **`internal/tui/`**: Bubble Tea reorder UI. Holds no ordering rules: every key calls a `Tree` method (Up/Down/Top/Bottom/Indent/Outdent/Move) and the view is rebuilt from the tree. `enter` opens a read-only detail view (`J`/`K` or `→`/`←` step to the next/previous ticket in list order; `detail.go`: `internal/render`'s document wrapped to the window width, reloaded from disk under a shared lock on open); `esc`/`q` return to the list. `e` (list or detail view, `edit.go`) is the only way it changes ticket contents: it hands the file to `$EDITOR` through `internal/edit`, the same code as `tk edit`, via `tea.ExecProcess` (tests swap the unexported `Model.exec`). There are no create, delete, status, type, archive or dep keys; archived tickets are never listed. Tests drive `Model.Update` in-process.
 
+**`internal/web/`**: `tk serve`'s read-only `net/http` handler. `/` is the outline (`tree.Filter`, the same rule as `ls`, from `?all`/`?archived`) with the ready line; `/t/{id}` resolves partial ids (redirect) and renders `render.Markdown` → `render.Linkify` → goldmark (GFM, raw HTML dropped) into `page.html` (embedded template and CSS, no JavaScript; a CSP forbids scripts). Each request takes the shared lock only while it loads a fresh tree; nothing is cached. `LocalOnly` refuses non-loopback `Host` headers. Tests use `httptest`.
+
 ### Key Design Patterns
 
-**Locking**: `internal/store/lock.go` provides `Store.Lock(exclusive)`, an advisory `flock` on `.tickets/.lock` (unix; no-op on Windows) that waits 5s. `cmd/helpers.go` `lockCommand` wraps every command's `RunE` so the lock spans load to save: exclusive by default, shared for commands annotated `lockShared` (`ls`, `show`, `ready`, `fsck`), none for `lockNone` (`edit` and `tui` lock themselves). The TUI takes the lock per reorder and calls `Tree.Reload()` first so it never writes from a stale tree. New commands are exclusive by default.
+**Locking**: `internal/store/lock.go` provides `Store.Lock(exclusive)`, an advisory `flock` on `.tickets/.lock` (unix; no-op on Windows) that waits 5s. `cmd/helpers.go` `lockCommand` wraps every command's `RunE` so the lock spans load to save: exclusive by default, shared for commands annotated `lockShared` (`ls`, `show`, `ready`, `fsck`), none for `lockNone` (`edit`, `tui` and `serve` lock themselves). The TUI takes the lock per reorder and calls `Tree.Reload()` first so it never writes from a stale tree. New commands are exclusive by default.
 
 **Atomic updates**: mutating `Tree` methods run via `apply()`, which changes the in-memory state, persists only dirty tickets and `ROOT.md` through the store (each write is temp file + rename), and reloads from disk on any failure to roll back.
 
@@ -109,6 +113,6 @@ go run main.go [command]   # run without building
 - `AGENT_INSTRUCTIONS.md` is the guide agents read to use `tk`. When a command, flag or output format is added, changed or removed, update it alongside `docs/spec.md` and `README.md`.
 
 - Go modules (`go 1.26.0` in `go.mod`)
-- Dependencies: `spf13/cobra` (CLI), `gopkg.in/yaml.v3` (YAML)
+- Dependencies: `spf13/cobra` (CLI), `gopkg.in/yaml.v3` (YAML), `yuin/goldmark` (web view markdown)
 - Tickets directory defaults to `.tickets`, override with `--dir`
 - Errors use `fmt.Errorf()` with `%w`

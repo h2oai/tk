@@ -525,3 +525,12 @@ func TestArchiveAll(t *testing.T) {
 		t.Errorf("second run: %q", out)
 	}
 }
+
+func TestServeNeedsTickets(t *testing.T) {
+	e := newEnv(t)
+	_, errs, code := e.fail("serve", "--addr", "127.0.0.1:0")
+	contains(t, errs, "no tickets directory")
+	if code != ExitGeneric {
+		t.Errorf("code %d", code)
+	}
+}

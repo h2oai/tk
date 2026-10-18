@@ -254,6 +254,15 @@ func (t *Tree) IsArchived(id string) bool {
 	return tk != nil && tk.Archived
 }
 
+// Filter says which subtrees an outline shows: closed ones only with All,
+// archived ones only with Archived.
+type Filter struct{ All, Archived bool }
+
+// Shows reports whether f keeps id and its subtree in an outline.
+func (f Filter) Shows(t *Tree, id string) bool {
+	return (f.Archived || !t.IsArchived(id)) && (f.All || !t.SubtreeClosed(id))
+}
+
 // SubtreeClosed reports whether id and all its descendants are closed.
 // ArchiveClosed computes the same rule for every ticket in one bottom-up pass.
 func (t *Tree) SubtreeClosed(id string) bool { return !t.hasUnclosed(t.Subtree(id)) }
