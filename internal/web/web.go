@@ -78,20 +78,25 @@ type page struct {
 	Err      string
 }
 
-// doc is one ticket's page: its metadata, links and children laid out by
-// the template, and its body rendered from markdown.
+// doc is one ticket's page: its metadata, the parent and children sections,
+// its body rendered from markdown, then the remaining sections.
 type doc struct {
-	Ticket   *store.Ticket
-	Pos      string
-	Links    []link // parent, blocked by, blocks, mentioned by, in that order
-	Children []row
-	Body     template.HTML
+	Ticket *store.Ticket
+	Pos    string
+	Tree   []section // parent, children
+	Body   template.HTML
+	Links  []section // blocked by, blocks, mentioned by, in that order
 }
 
-// link is one line of a ticket's link grid. Closed and archived tickets are
-// included.
+// section is a heading over outline rows of related tickets. Closed and
+// archived tickets are included; empty sections are left out.
+type section struct {
+	Title string
+	Links []link
+}
+
+// link is one line of a section.
 type link struct {
-	Label   string // the group's label, on its first line only
 	Row     row    // Row.Ticket is nil when Missing is set
 	Missing string // a dangling blocked-by id
 }
@@ -184,35 +189,33 @@ func (s *server) ticket(w http.ResponseWriter, r *http.Request) {
 	}
 	tk := t.Get(id)
 	d := &doc{Ticket: tk, Pos: t.Position(id)}
-	group := func(label string, ids []string) {
-		for i, x := range ids {
-			l := link{}
-			if i == 0 {
-				l.Label = label
-			}
-			if t.Get(x) != nil {
-				l.Row = newRow(t, x, 0)
-			} else {
-				l.Missing = x
-			}
-			d.Links = append(d.Links, l)
+	group := func(title string, ids []string) []section {
+		if len(ids) == 0 {
+			return nil
 		}
+		sec := section{Title: title}
+		for _, x := range ids {
+			if t.Get(x) != nil {
+				sec.Links = append(sec.Links, link{Row: newRow(t, x, 0)})
+			} else {
+				sec.Links = append(sec.Links, link{Missing: x})
+			}
+		}
+		return []section{sec}
 	}
 	if p := t.Parent(id); t.Get(p) != nil {
-		group("parent", []string{p})
+		d.Tree = group("Parent", []string{p})
 	}
-	group("blocked by", tk.BlockedBy)
-	group("blocks", t.Blocks(id))
+	d.Tree = append(d.Tree, group("Children", t.Children(id))...)
+	d.Links = append(d.Links, group("Blocked by", tk.BlockedBy)...)
+	d.Links = append(d.Links, group("Blocks", t.Blocks(id))...)
 	var mentions []string
 	for _, m := range append(t.Order(), t.Orphans()...) {
 		if m != id && len(render.Mentions(t.Get(m).Body, func(w string) bool { return w == id })) > 0 {
 			mentions = append(mentions, m)
 		}
 	}
-	group("mentioned by", mentions)
-	for _, c := range t.Children(id) {
-		d.Children = append(d.Children, newRow(t, c, 0))
-	}
+	d.Links = append(d.Links, group("Mentioned by", mentions)...)
 	src := render.Linkify(strings.TrimSpace(tk.Body), func(word string) string {
 		if t.Get(word) != nil {
 			return "/t/" + word

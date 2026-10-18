@@ -146,20 +146,21 @@ func TestTicket(t *testing.T) {
 		`<p class="meta">other · 2 · 2026-01-02T03:04:05Z</p>`,
 		`Depends on <a href="/t/kid">kid</a>, not on gone1.`,
 		"<code>kid</code>",
-	}, []string{"<script>", "javascript:", "<h2>Children</h2>", "blocked by"})
+	}, []string{"<script>", "javascript:", "<h2>Parent</h2>", "<h2>Children</h2>", "<h2>Blocked by</h2>", "<hr>"})
 
 	_, body = get(t, srv, "/t/epic")
 	check(t, body, []string{
 		"<h2>Children</h2>",
 		`<span class="pos">1.1</span> <span class="dot d-open"></span> <a href="/t/kid">kid</a>`,
 		`<span class="pos">1.2</span> <span class="dot d-closed"></span> <a href="/t/done">done</a>`,
-	}, []string{"<hr>"})
+	}, []string{"<h2>Parent</h2>", "<h2>Description</h2>"})
 
 	_, body = get(t, srv, "/t/kid")
 	check(t, body, []string{
 		`<p class="meta">kid · 1.1 · 2026-01-02T03:04:05Z</p>`,
-		`<span class="label">parent</span> <span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
-	}, []string{"· under"})
+		"<h2>Parent</h2>",
+		`<span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
+	}, []string{"· under", "<h2>Children</h2>"})
 }
 
 func TestTicketBlockers(t *testing.T) {
@@ -180,9 +181,11 @@ func TestTicketBlockers(t *testing.T) {
 	}
 	_, body := get(t, srv, "/t/other")
 	check(t, body, []string{
-		`<div class="link s-in_progress"><span class="label">blocked by</span> <span class="pos">1.1</span> <span class="dot d-in_progress"></span> <a href="/t/kid">kid</a>`,
-		`<div class="link"><span class="label"></span> <span class="missing">gone1 (missing)</span></div>`,
-	}, []string{`<span class="label">parent</span>`})
+		"<h2>Blocked by</h2>",
+		`<div class="row s-in_progress" style="padding-left: calc(0 * 2ch + 4px)">
+  <span class="pos">1.1</span> <span class="dot d-in_progress"></span> <a href="/t/kid">kid</a>`,
+		`<div class="row missing">gone1 (missing)</div>`,
+	}, []string{"<h2>Parent</h2>"})
 	_, body = get(t, srv, "/t/kid")
 	check(t, body, []string{`<span class="dot d-in_progress"></span> in progress`}, nil)
 }
@@ -206,24 +209,42 @@ func TestTicketReverseLinks(t *testing.T) {
 		}
 	}
 	_, body := get(t, srv, "/t/kid")
-	// One line per ticket, labelled on the first line of each group, in
-	// group order and then outline order.
+	// Parent and children above the body, the other sections below it; one row per
+	// ticket, in section order and then outline order.
 	want := []string{
-		`<span class="label">parent</span> <span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
-		`<span class="label">blocks</span> <span class="pos">2</span> <span class="dot d-open"></span> <a href="/t/other">other</a>`,
-		`<span class="title">T other <span class="deps">← <a href="/t/kid">kid</a></span></span></div>`,
-		`<span class="label">mentioned by</span> <span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
-		`<div class="link s-closed archived"><span class="label"></span> <span class="pos">-</span> <span class="dot d-archived"></span> <a href="/t/done">done</a>`,
-		`<span class="label"></span> <span class="pos">2</span> <span class="dot d-open"></span> <a href="/t/other">other</a>`,
+		"<h2>Parent</h2>",
+		`<span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
+		"<h2>Description</h2>",
+		`<p>I am <a href="/t/kid">kid</a>; see <code>other</code>.</p>`,
+		"<h2>Blocks</h2>",
+		`<span class="pos">2</span> <span class="dot d-open"></span> <a href="/t/other">other</a>`,
+		`<span class="title">T other</span> <span class="deps">← <a href="/t/kid">kid</a></span>`,
+		"<h2>Mentioned by</h2>",
+		`<span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
+		`<div class="row s-closed archived" style="padding-left: calc(0 * 2ch + 4px)">
+  <span class="pos">-</span> <span class="dot d-archived"></span> <a href="/t/done">done</a>`,
+		`<span class="pos">2</span> <span class="dot d-open"></span> <a href="/t/other">other</a>`,
 	}
-	check(t, body, want, nil)
-	for i := 1; i < len(want); i++ {
-		if strings.Index(body, want[i-1]) > strings.Index(body, want[i]) {
-			t.Errorf("%q before %q", want[i], want[i-1])
-		}
-	}
+	checkOrder(t, body, want)
 	_, body = get(t, srv, "/t/other")
-	check(t, body, []string{`<span class="label">blocked by</span>`}, []string{`<span class="label">blocks</span>`, `<span class="label">mentioned by</span>`})
+	check(t, body, []string{"<h2>Blocked by</h2>"}, []string{"<h2>Blocks</h2>", "<h2>Mentioned by</h2>"})
+	// Children sit with the parent, above the body.
+	_, body = get(t, srv, "/t/epic")
+	checkOrder(t, body, []string{"<h2>Children</h2>", `<a href="/t/kid">kid</a>`, "<h2>Description</h2>", "<p>About"})
+}
+
+// checkOrder fails unless every string in want appears in body, in order.
+func checkOrder(t *testing.T, body string, want []string) {
+	t.Helper()
+	check(t, body, want, nil)
+	rest := body
+	for _, w := range want {
+		i := strings.Index(rest, w)
+		if i < 0 {
+			t.Fatalf("%q out of order", w)
+		}
+		rest = rest[i+len(w):]
+	}
 }
 
 func TestResolve(t *testing.T) {
