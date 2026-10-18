@@ -85,7 +85,7 @@ For example:
 
 ## Web view
 
-`tk serve` starts a read-only web view at <http://127.0.0.1:7777/> (`--addr` to change it). `/` shows the outline like `tk ls`, with status as colored dots, type and effort as colored badges, the ready ticket highlighted and links to show closed and archived tickets; `/t/<id>` shows one ticket (metadata, its parent and children, its description and notes, then its blockers, what it blocks and which tickets mention it, each under its own heading), with every ticket id in its text linked. Pages re-read `.tickets` on every request, so refresh to see changes.
+`tk serve` starts a read-only web view at <http://127.0.0.1:7777/> (`--addr` to change it). `/` shows the outline like `tk ls`, with status as colored dots, type and effort as colored badges, the ready ticket highlighted and links to show closed and archived tickets; `/t/<id>` shows one ticket (metadata, its parent and children, its description and notes, then its blockers, what it blocks and which tickets mention it, each under its own heading), with every ticket id in its text linked. Times show as their age (`created 3d ago`, `Note · 2h ago`; hover for the exact time). Pages re-read `.tickets` on every request, so refresh to see changes.
 
 ## Ticket readiness
 

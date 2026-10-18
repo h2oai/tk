@@ -12,6 +12,10 @@ import (
 	"github.com/h2oai/tk/internal/tree"
 )
 
+// created is every test ticket's creation time; the test server's clock reads
+// 3 days and 2 hours later.
+var created = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+
 // serve builds epic(kid, done) and other, with epic blocked by other, and
 // returns a test server over that store.
 func serve(t *testing.T) (*httptest.Server, *tree.Tree) {
@@ -31,7 +35,7 @@ func serveStore(t *testing.T) (*httptest.Server, *tree.Tree, *store.Store) {
 	}
 	add := func(id, parent, body string) {
 		tk := &store.Ticket{ID: id, Status: store.StatusOpen, Type: store.TypeTask, Effort: store.EffortNormal,
-			Created: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), Title: "T " + id, Body: body}
+			Created: created, Title: "T " + id, Body: body}
 		if err := tr.Add(tk, parent, tree.Place{}); err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +54,8 @@ func serveStore(t *testing.T) (*httptest.Server, *tree.Tree, *store.Store) {
 		t.Fatal(err)
 	}
 	lock := func(bool) (func(), error) { return func() {}, nil }
-	srv := httptest.NewServer(Handler(func() (*tree.Tree, error) { return tree.Load(st) }, lock))
+	now := func() time.Time { return created.Add(3*24*time.Hour + 2*time.Hour) }
+	srv := httptest.NewServer(handler(func() (*tree.Tree, error) { return tree.Load(st) }, lock, now))
 	t.Cleanup(srv.Close)
 	return srv, tr, st
 }
@@ -143,7 +148,7 @@ func TestTicket(t *testing.T) {
 		"<title>T other</title>",
 		"<h1>T other</h1>",
 		`<p class="chips"><span class="dot d-open"></span> open <span class="badge ty-feature">feat</span> <span class="badge ef-hard">hard</span></p>`,
-		`<p class="meta">other · 2 · 2026-01-02T03:04:05Z</p>`,
+		`<p class="meta">other · 2 · created ` + tag("2026-01-02T03:04:05Z", "3d ago") + `</p>`,
 		`Depends on <a href="/t/kid">kid</a>, not on gone1.`,
 		"<code>kid</code>",
 	}, []string{"<script>", "javascript:", "<h2>Parent</h2>", "<h2>Children</h2>", "<h2>Blocked by</h2>", "<hr>"})
@@ -157,10 +162,56 @@ func TestTicket(t *testing.T) {
 
 	_, body = get(t, srv, "/t/kid")
 	check(t, body, []string{
-		`<p class="meta">kid · 1.1 · 2026-01-02T03:04:05Z</p>`,
+		`<p class="meta">kid · 1.1 · created ` + tag("2026-01-02T03:04:05Z", "3d ago") + `</p>`,
 		"<h2>Parent</h2>",
 		`<span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
 	}, []string{"· under", "<h2>Children</h2>"})
+}
+
+// tag is the <time> element timeTag renders for the UTC time at.
+func tag(at, text string) string {
+	tm, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		panic(err)
+	}
+	return `<time datetime="` + at + `" title="` + tm.Local().Format("2006-01-02 15:04:05 MST") + `">` + text + `</time>`
+}
+
+func TestTicketNotes(t *testing.T) {
+	srv, tr := serve(t)
+	if err := tr.AppendNote("kid", "first\n\n## Note soon\n\n    ## Note 2026-01-02T03:04:05Z", created.Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.AppendNote("kid", "second", created.Add(3*24*time.Hour+2*time.Hour-30*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, body := get(t, srv, "/t/kid")
+	check(t, body, []string{
+		"<h2>Note · " + tag("2026-01-03T03:04:05Z", "2d ago") + "</h2>",
+		"<h2>Note · " + tag("2026-01-05T05:03:35Z", "now") + "</h2>",
+		"<h2>Note soon</h2>",
+		"<pre><code>## Note 2026-01-02T03:04:05Z\n</code></pre>",
+	}, nil)
+}
+
+func TestAgo(t *testing.T) {
+	const day = 24 * time.Hour
+	for _, c := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{-time.Hour, "now"}, {0, "now"}, {59 * time.Second, "now"},
+		{time.Minute, "1m ago"}, {59 * time.Minute, "59m ago"},
+		{time.Hour, "1h ago"}, {23 * time.Hour, "23h ago"},
+		{day, "1d ago"}, {6 * day, "6d ago"},
+		{7 * day, "1w ago"}, {29 * day, "4w ago"},
+		{30 * day, "1mo ago"}, {364 * day, "12mo ago"},
+		{365 * day, "1y ago"}, {800 * day, "2y ago"},
+	} {
+		if got := ago(c.d); got != c.want {
+			t.Errorf("ago(%v) = %q, want %q", c.d, got, c.want)
+		}
+	}
 }
 
 func TestTicketBlockers(t *testing.T) {

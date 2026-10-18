@@ -61,7 +61,7 @@ th, td { border: 1px solid var(--line); padding: 2px 8px; }
 {{- else}}{{with .Doc}}
 <h1>{{.Ticket.Title}}</h1>
 <p class="chips">{{template "dot" .Ticket}} {{template "status" .Ticket}} {{template "badges" .Ticket}}</p>
-<p class="meta">{{.Ticket.ID}} · {{.Pos}} · {{.Ticket.Created.UTC.Format "2006-01-02T15:04:05Z"}}</p>
+<p class="meta">{{.Ticket.ID}} · {{.Pos}} · created {{.Created}}</p>
 {{- template "sections" .Tree}}
 {{- with .Body}}
 <h2>Description</h2>

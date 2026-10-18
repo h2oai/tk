@@ -11,12 +11,16 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/h2oai/tk/internal/render"
 	"github.com/h2oai/tk/internal/store"
 	"github.com/h2oai/tk/internal/tree"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer"
+	"github.com/yuin/goldmark/util"
 )
 
 //go:embed page.html
@@ -25,19 +29,27 @@ var pageHTML string
 var (
 	pages = template.Must(template.New("page").Parse(pageHTML))
 	// md leaves raw HTML out of ticket bodies and drops javascript: links,
-	// goldmark's defaults without html.WithUnsafe.
-	md = goldmark.New(goldmark.WithExtensions(extension.GFM))
+	// goldmark's defaults without html.WithUnsafe. Note headings show their
+	// time relative to the request.
+	md = goldmark.New(goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(parser.WithASTTransformers(util.Prioritized(noteTimes{}, 100))),
+		goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(noteTimeRenderer{}, 100))))
 )
 
 type server struct {
 	load func() (*tree.Tree, error)
 	lock func(exclusive bool) (func(), error)
+	now  func() time.Time // the clock relative times are measured against
 }
 
 // Handler serves the pages. load reads the tree and lock takes the store lock;
 // a request holds the shared lock only while it loads.
 func Handler(load func() (*tree.Tree, error), lock func(exclusive bool) (func(), error)) http.Handler {
-	s := &server{load: load, lock: lock}
+	return handler(load, lock, time.Now)
+}
+
+func handler(load func() (*tree.Tree, error), lock func(exclusive bool) (func(), error), now func() time.Time) http.Handler {
+	s := &server{load: load, lock: lock, now: now}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.outline)
 	mux.HandleFunc("GET /t/{id}", s.ticket)
@@ -81,11 +93,12 @@ type page struct {
 // doc is one ticket's page: its metadata, the parent and children sections,
 // its body rendered from markdown, then the remaining sections.
 type doc struct {
-	Ticket *store.Ticket
-	Pos    string
-	Tree   []section // parent, children
-	Body   template.HTML
-	Links  []section // blocked by, blocks, mentioned by, in that order
+	Ticket  *store.Ticket
+	Pos     string
+	Created template.HTML // relative to the request
+	Tree    []section     // parent, children
+	Body    template.HTML
+	Links   []section // blocked by, blocks, mentioned by, in that order
 }
 
 // section is a heading over outline rows of related tickets. Closed and
@@ -188,7 +201,8 @@ func (s *server) ticket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tk := t.Get(id)
-	d := &doc{Ticket: tk, Pos: t.Position(id)}
+	now := s.now()
+	d := &doc{Ticket: tk, Pos: t.Position(id), Created: timeTag(tk.Created, now)}
 	group := func(title string, ids []string) []section {
 		if len(ids) == 0 {
 			return nil
@@ -223,7 +237,9 @@ func (s *server) ticket(w http.ResponseWriter, r *http.Request) {
 		return ""
 	})
 	var b bytes.Buffer
-	if err := md.Convert([]byte(src), &b); err != nil {
+	pc := parser.NewContext()
+	pc.Set(nowKey, now)
+	if err := md.Convert([]byte(src), &b, parser.WithContext(pc)); err != nil {
 		s.fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
