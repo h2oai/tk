@@ -94,7 +94,7 @@ func TestOutline(t *testing.T) {
 		t.Fatalf("code %d", code)
 	}
 	check(t, body, []string{
-		`ready: <a href="/t/kid">kid</a> 1.1 <span class="badge ty-task">task</span> <span class="badge ef-normal">norm</span> T kid`,
+		`ready: <span class="dot d-open"></span> <a href="/t/kid">kid</a> 1.1 <span class="badge ty-task">task</span> <span class="badge ef-normal">norm</span> T kid`,
 		`<span class="badge ty-feature">feat</span> <span class="badge ef-hard">hard</span> <span class="title">T other</span>`,
 		`class="row s-open top"`,
 		`<a href="/t/epic">epic</a>`,
@@ -111,9 +111,14 @@ func TestOutline(t *testing.T) {
 	_, body = get(t, srv, "/?all")
 	check(t, body, nil, []string{`/t/done"`})
 	_, body = get(t, srv, "/?archived")
-	check(t, body, []string{`<span class="pos">-</span> <span class="mark">[a]</span> <a href="/t/done">done</a>`, `<b>archived</b>`}, nil)
+	check(t, body, []string{`<span class="pos">-</span> <span class="dot d-archived"></span> <a href="/t/done">done</a>`, `<b>archived</b>`}, nil)
 	_, body = get(t, srv, "/t/epic")
-	check(t, body, []string{`<li>- [a] <a href="/t/done">done</a>  T <a href="/t/done">done</a></li>`}, nil)
+	check(t, body, []string{
+		`<div class="row s-closed archived" style="padding-left: calc(0 * 2ch + 4px)">`,
+		`<span class="pos">-</span> <span class="dot d-archived"></span> <a href="/t/done">done</a>`,
+	}, nil)
+	_, body = get(t, srv, "/t/done")
+	check(t, body, []string{`<span class="dot d-archived"></span> closed, archived <span class="badge ty-task">`}, nil)
 }
 
 func TestOutlineBlocked(t *testing.T) {
@@ -136,12 +141,46 @@ func TestTicket(t *testing.T) {
 	}
 	check(t, body, []string{
 		"<title>T other</title>",
+		"<h1>T other</h1>",
+		`<p class="chips"><span class="dot d-open"></span> open <span class="badge ty-feature">feat</span> <span class="badge ef-hard">hard</span></p>`,
+		`<p class="meta">other · 2 · 2026-01-02T03:04:05Z</p>`,
 		`Depends on <a href="/t/kid">kid</a>, not on gone1.`,
 		"<code>kid</code>",
-	}, []string{"<script>", "javascript:"})
+	}, []string{"<script>", "javascript:", "<h2>Children</h2>", "blocked by"})
 
 	_, body = get(t, srv, "/t/epic")
-	check(t, body, []string{`<a href="/t/kid">kid</a>`, `<a href="/t/done">done</a>`}, nil)
+	check(t, body, []string{
+		"<h2>Children</h2>",
+		`<span class="pos">1.1</span> <span class="dot d-open"></span> <a href="/t/kid">kid</a>`,
+		`<span class="pos">1.2</span> <span class="dot d-closed"></span> <a href="/t/done">done</a>`,
+	}, []string{"<hr>"})
+
+	_, body = get(t, srv, "/t/kid")
+	check(t, body, []string{`<p class="meta">kid · 1.1 · under <a href="/t/epic">epic</a> “T epic” · 2026-01-02T03:04:05Z</p>`}, nil)
+}
+
+func TestTicketBlockers(t *testing.T) {
+	srv, tr, st := serveStore(t)
+	if err := tr.AddDep("other", "kid"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.Start("kid"); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := st.Load("other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk.BlockedBy = append(tk.BlockedBy, "gone1")
+	if err := st.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	_, body := get(t, srv, "/t/other")
+	check(t, body, []string{
+		`<p class="meta">blocked by: <span class="dot d-in_progress"></span> <a href="/t/kid">kid</a> “T kid” (1.1), gone1 (missing)</p>`,
+	}, nil)
+	_, body = get(t, srv, "/t/kid")
+	check(t, body, []string{`<span class="dot d-in_progress"></span> in progress`}, nil)
 }
 
 func TestResolve(t *testing.T) {

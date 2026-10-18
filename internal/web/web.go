@@ -74,8 +74,26 @@ type page struct {
 	Filter   string
 	Ready    *ready
 	Rows     []row
-	Doc      template.HTML
+	Doc      *doc
 	Err      string
+}
+
+// doc is one ticket's page: its metadata and children laid out by the
+// template, and its body rendered from markdown.
+type doc struct {
+	Ticket   *store.Ticket
+	Pos      string
+	Parent   *store.Ticket // nil for a root
+	Blockers []blocker     // every blocked-by entry, closed ones included
+	Children []row
+	Body     template.HTML
+}
+
+// blocker is one blocked-by entry; Ticket is nil when the id is dangling.
+type blocker struct {
+	ID     string
+	Ticket *store.Ticket
+	Pos    string
 }
 
 // ready is the line `tk ready` would print: Ticket is nil when nothing is
@@ -120,13 +138,8 @@ func (s *server) outline(w http.ResponseWriter, r *http.Request) {
 	}
 	var walk func(id string, depth int)
 	walk = func(id string, depth int) {
-		tk := t.Get(id)
-		rw := row{Depth: depth, Pos: t.Position(id), Ticket: tk, Ready: res.Ticket != nil && res.Ticket.ID == id}
-		for _, b := range tk.BlockedBy {
-			if bt := t.Get(b); bt != nil && bt.Status != store.StatusClosed {
-				rw.Blockers = append(rw.Blockers, b)
-			}
-		}
+		rw := newRow(t, id, depth)
+		rw.Ready = res.Ticket != nil && res.Ticket.ID == id
 		p.Rows = append(p.Rows, rw)
 		for _, c := range t.Children(id) {
 			if f.Shows(t, c) {
@@ -140,6 +153,18 @@ func (s *server) outline(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.write(w, http.StatusOK, p)
+}
+
+// newRow builds id's outline line.
+func newRow(t *tree.Tree, id string, depth int) row {
+	tk := t.Get(id)
+	rw := row{Depth: depth, Pos: t.Position(id), Ticket: tk}
+	for _, b := range tk.BlockedBy {
+		if bt := t.Get(b); bt != nil && bt.Status != store.StatusClosed {
+			rw.Blockers = append(rw.Blockers, b)
+		}
+	}
+	return rw
 }
 
 func (s *server) ticket(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +182,19 @@ func (s *server) ticket(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/t/"+id, http.StatusFound)
 		return
 	}
-	src := render.Linkify(render.Markdown(t, id), func(word string) string {
+	tk := t.Get(id)
+	d := &doc{Ticket: tk, Pos: t.Position(id), Parent: t.Get(t.Parent(id))}
+	for _, b := range tk.BlockedBy {
+		bl := blocker{ID: b, Ticket: t.Get(b)}
+		if bl.Ticket != nil {
+			bl.Pos = t.Position(b)
+		}
+		d.Blockers = append(d.Blockers, bl)
+	}
+	for _, c := range t.Children(id) {
+		d.Children = append(d.Children, newRow(t, c, 0))
+	}
+	src := render.Linkify(strings.TrimSpace(tk.Body), func(word string) string {
 		if t.Get(word) != nil {
 			return "/t/" + word
 		}
@@ -168,7 +205,8 @@ func (s *server) ticket(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.write(w, http.StatusOK, page{Title: t.Get(id).Title, Problems: len(t.Fsck()), Doc: template.HTML(b.String())})
+	d.Body = template.HTML(b.String())
+	s.write(w, http.StatusOK, page{Title: tk.Title, Problems: len(t.Fsck()), Doc: d})
 }
 
 // tree loads the tree under the shared lock, or writes an error page.

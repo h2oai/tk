@@ -19,11 +19,16 @@ nav { display: flex; gap: 1rem; color: var(--muted); border-bottom: 1px solid va
 nav b { color: var(--fg); }
 .banner { color: var(--warn); }
 .ready { margin: 0 0 1rem; }
-.outline { font-family: ui-monospace, monospace; font-size: 14px; }
 .row { padding: 1px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.top { background: var(--hi); }
 .pos, .s-closed .title, .archived .title { color: var(--muted); }
-.s-in_progress .mark { color: var(--prog); font-weight: bold; }
+.dot { display: inline-block; width: .6em; height: .6em; border-radius: 50%; box-sizing: border-box; vertical-align: .05em; }
+.d-open { border: 1.5px solid var(--muted); }
+.d-in_progress { background: var(--prog); }
+.d-closed { background: var(--green); }
+.d-archived { background: var(--gray); }
+.meta { color: var(--muted); margin: .25rem 0; }
+.chips { margin: .25rem 0; }
 .deps { color: var(--warn); }
 .badge { --c: var(--gray); color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); border-radius: 1em; padding: 0 .5em; font-size: 12px; }
 .ty-bug { --c: var(--red); }
@@ -52,27 +57,52 @@ th, td { border: 1px solid var(--line); padding: 2px 8px; }
 {{- if .Err}}
 <h1>{{.Title}}</h1>
 <p>{{.Err}}</p>
-{{- else if .Doc}}
-{{.Doc}}
+{{- else}}{{with .Doc}}
+<h1>{{.Ticket.Title}}</h1>
+<p class="chips">{{template "dot" .Ticket}} {{template "status" .Ticket}} {{template "badges" .Ticket}}</p>
+<p class="meta">{{.Ticket.ID}} · {{.Pos}}
+  {{- with .Parent}} · under <a href="/t/{{.ID}}">{{.ID}}</a> “{{.Title}}”{{end}} · {{.Ticket.Created.UTC.Format "2006-01-02T15:04:05Z"}}</p>
+{{- with .Blockers}}
+<p class="meta">blocked by: {{range $i, $b := .}}{{if $i}}, {{end}}
+  {{- with .Ticket}}{{template "dot" .}} <a href="/t/{{.ID}}">{{.ID}}</a> “{{.Title}}” ({{$b.Pos}}){{else}}{{.ID}} (missing){{end}}
+  {{- end}}</p>
+{{- end}}
+{{- with .Children}}
+<h2>Children</h2>
+<div class="outline">
+{{- range .}}{{template "row" .}}{{end}}
+</div>
+{{- end}}
+{{- with .Body}}
+<hr>
+{{.}}
+{{- end}}
 {{- else}}
 {{- with .Ready}}
 <p class="ready">
 {{- if .Block}}blocked: <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a> “{{.Ticket.Title}}” waits on <a href="/t/{{.Block.Blocker.ID}}">{{.Block.Blocker.ID}}</a> “{{.Block.Blocker.Title}}” ({{.Block.BlockerPos}}, {{.Block.Blocker.Status}})
-{{- else if .Ticket}}ready: <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a> {{.Pos}} {{template "badges" .Ticket}} {{.Ticket.Title}}
+{{- else if .Ticket}}ready: {{template "dot" .Ticket}} <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a> {{.Pos}} {{template "badges" .Ticket}} {{.Ticket.Title}}
 {{- else}}nothing left to do{{end}}</p>
 {{- end}}
 <div class="outline">
-{{- range .Rows}}
+{{- range .Rows}}{{template "row" .}}{{end}}
+</div>
+{{- end}}{{end}}
+</body>
+</html>
+{{- define "row"}}
 <div class="row s-{{.Ticket.Status}}{{if .Ticket.Archived}} archived{{end}}{{if .Ready}} top{{end}}" style="padding-left: calc({{.Depth}} * 2ch + 4px)">
-  <span class="pos">{{.Pos}}</span> <span class="mark">{{.Ticket.Marker}}</span> <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a>
+  <span class="pos">{{.Pos}}</span> {{template "dot" .Ticket}} <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a>
   {{template "badges" .Ticket}} <span class="title">{{.Ticket.Title}}</span>
   {{- with .Blockers}} <span class="deps">← {{range $i, $b := .}}{{if $i}}, {{end}}<a href="/t/{{$b}}">{{$b}}</a>{{end}}</span>{{end}}
 </div>
 {{- end}}
-</div>
+{{- define "dot" -}}
+<span class="dot d-{{if .Archived}}archived{{else}}{{.Status}}{{end}}"></span>
 {{- end}}
-</body>
-</html>
+{{- define "status" -}}
+{{if .Archived}}closed, archived{{else if eq .Status "in_progress"}}in progress{{else}}{{.Status}}{{end}}
+{{- end}}
 {{- define "badges" -}}
 <span class="badge ty-{{.Type}}">{{if eq .Type "feature"}}feat{{else}}{{.Type}}{{end}}</span> <span class="badge ef-{{.Effort}}">{{if eq .Effort "normal"}}norm{{else}}{{.Effort}}{{end}}</span>
 {{- end}}
