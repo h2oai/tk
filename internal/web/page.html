@@ -10,6 +10,7 @@
   :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --link: #4493f8; --hi: #2e2a14; --warn: #d29922; --line: #30363d; --prog: #d29922; --code: #161b22; }
 }
 body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; max-width: 60rem; margin: 0 auto; padding: 1rem; }
+body.doc { max-width: 65ch; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 nav { display: flex; gap: 1rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: .5rem; margin-bottom: 1rem; }
@@ -29,7 +30,7 @@ table { border-collapse: collapse; }
 th, td { border: 1px solid var(--line); padding: 2px 8px; }
 </style>
 </head>
-<body>
+<body{{if .Doc}} class="doc"{{end}}>
 <nav>
   <a href="/">outline</a>
   {{- with .Filter}}
