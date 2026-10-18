@@ -8,12 +8,12 @@
 :root { --bg: #fff; --fg: #1f2328; --muted: #6e7781; --link: #0969da; --hi: #fff8c5; --warn: #9a6700; --line: #d0d7de; --prog: #bf8700; --code: #f6f8fa;
   --red: #cf222e; --green: #1a7f37; --blue: #0969da; --gray: #59636e; --teal: #0f766e; --orange: #bc4c00; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --link: #4493f8; --hi: #2e2a14; --warn: #d29922; --line: #30363d; --prog: #d29922; --code: #161b22;
+  :root { --bg: #1e293b; --fg: #94a3b8; --muted: #64748b; --link: #38bdf8; --hi: #2e2a14; --warn: #d29922; --line: #334155; --prog: #d29922; --code: #0f172a;
     --red: #ff7b72; --green: #3fb950; --blue: #58a6ff; --gray: #9198a1; --teal: #2dd4bf; --orange: #f0883e; }
 }
 body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; max-width: 60rem; margin: 0 auto; padding: 1rem; }
 body.doc { max-width: 65ch; }
-a { color: var(--link); text-decoration: none; }
+a { color: var(--link); font-weight: bold; text-decoration: none; }
 a:hover { text-decoration: underline; }
 nav { display: flex; gap: 1rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: .5rem; margin-bottom: 1rem; }
 nav b { color: var(--fg); }
