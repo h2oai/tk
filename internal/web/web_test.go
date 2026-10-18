@@ -43,6 +43,12 @@ func serveStore(t *testing.T) (*httptest.Server, *tree.Tree, *store.Store) {
 	if _, err := tr.Close("done", false); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := tr.SetType("other", store.TypeFeature); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.SetEffort("other", store.EffortHard); err != nil {
+		t.Fatal(err)
+	}
 	lock := func(bool) (func(), error) { return func() {}, nil }
 	srv := httptest.NewServer(Handler(func() (*tree.Tree, error) { return tree.Load(st) }, lock))
 	t.Cleanup(srv.Close)
@@ -88,7 +94,8 @@ func TestOutline(t *testing.T) {
 		t.Fatalf("code %d", code)
 	}
 	check(t, body, []string{
-		`ready: <a href="/t/kid">kid</a> 1.1 [task/normal] T kid`,
+		`ready: <a href="/t/kid">kid</a> 1.1 <span class="badge ty-task">task</span> <span class="badge ef-normal">norm</span> T kid`,
+		`<span class="badge ty-feature">feat</span> <span class="badge ef-hard">hard</span> <span class="title">T other</span>`,
 		`class="row s-open top"`,
 		`<a href="/t/epic">epic</a>`,
 		`<a href="/t/other">other</a>`,
