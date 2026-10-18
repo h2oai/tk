@@ -44,7 +44,11 @@ func Markdown(t *tree.Tree, id string) string {
 	if kids := t.Children(id); len(kids) > 0 {
 		b.WriteString("\n## Children\n\n")
 		for _, c := range kids {
-			fmt.Fprintf(&b, "- %s %s %s  %s\n", t.Position(c), t.Get(c).Marker(), c, t.Get(c).Title)
+			pos := t.Position(c)
+			if pos == "-" {
+				pos = `\-` // an archived child's "- -" would open a nested list
+			}
+			fmt.Fprintf(&b, "- %s %s %s  %s\n", pos, t.Get(c).Marker(), c, t.Get(c).Title)
 		}
 	}
 	if body := strings.TrimSpace(tk.Body); body != "" {
