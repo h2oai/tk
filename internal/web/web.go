@@ -78,22 +78,22 @@ type page struct {
 	Err      string
 }
 
-// doc is one ticket's page: its metadata and children laid out by the
-// template, and its body rendered from markdown.
+// doc is one ticket's page: its metadata, links and children laid out by
+// the template, and its body rendered from markdown.
 type doc struct {
 	Ticket   *store.Ticket
 	Pos      string
-	Parent   *store.Ticket // nil for a root
-	Blockers []blocker     // every blocked-by entry, closed ones included
+	Links    []link // parent, blocked by, blocks, mentioned by, in that order
 	Children []row
 	Body     template.HTML
 }
 
-// blocker is one blocked-by entry; Ticket is nil when the id is dangling.
-type blocker struct {
-	ID     string
-	Ticket *store.Ticket
-	Pos    string
+// link is one line of a ticket's link grid. Closed and archived tickets are
+// included.
+type link struct {
+	Label   string // the group's label, on its first line only
+	Row     row    // Row.Ticket is nil when Missing is set
+	Missing string // a dangling blocked-by id
 }
 
 // ready is the line `tk ready` would print: Ticket is nil when nothing is
@@ -183,14 +183,33 @@ func (s *server) ticket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tk := t.Get(id)
-	d := &doc{Ticket: tk, Pos: t.Position(id), Parent: t.Get(t.Parent(id))}
-	for _, b := range tk.BlockedBy {
-		bl := blocker{ID: b, Ticket: t.Get(b)}
-		if bl.Ticket != nil {
-			bl.Pos = t.Position(b)
+	d := &doc{Ticket: tk, Pos: t.Position(id)}
+	group := func(label string, ids []string) {
+		for i, x := range ids {
+			l := link{}
+			if i == 0 {
+				l.Label = label
+			}
+			if t.Get(x) != nil {
+				l.Row = newRow(t, x, 0)
+			} else {
+				l.Missing = x
+			}
+			d.Links = append(d.Links, l)
 		}
-		d.Blockers = append(d.Blockers, bl)
 	}
+	if p := t.Parent(id); t.Get(p) != nil {
+		group("parent", []string{p})
+	}
+	group("blocked by", tk.BlockedBy)
+	group("blocks", t.Blocks(id))
+	var mentions []string
+	for _, m := range append(t.Order(), t.Orphans()...) {
+		if m != id && len(render.Mentions(t.Get(m).Body, func(w string) bool { return w == id })) > 0 {
+			mentions = append(mentions, m)
+		}
+	}
+	group("mentioned by", mentions)
 	for _, c := range t.Children(id) {
 		d.Children = append(d.Children, newRow(t, c, 0))
 	}

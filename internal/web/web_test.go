@@ -156,7 +156,10 @@ func TestTicket(t *testing.T) {
 	}, []string{"<hr>"})
 
 	_, body = get(t, srv, "/t/kid")
-	check(t, body, []string{`<p class="meta">kid · 1.1 · under <a href="/t/epic">epic</a> “T epic” · 2026-01-02T03:04:05Z</p>`}, nil)
+	check(t, body, []string{
+		`<p class="meta">kid · 1.1 · 2026-01-02T03:04:05Z</p>`,
+		`<span class="label">parent</span> <span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
+	}, []string{"· under"})
 }
 
 func TestTicketBlockers(t *testing.T) {
@@ -177,10 +180,50 @@ func TestTicketBlockers(t *testing.T) {
 	}
 	_, body := get(t, srv, "/t/other")
 	check(t, body, []string{
-		`<p class="meta">blocked by: <span class="dot d-in_progress"></span> <a href="/t/kid">kid</a> “T kid” (1.1), gone1 (missing)</p>`,
-	}, nil)
+		`<div class="link s-in_progress"><span class="label">blocked by</span> <span class="pos">1.1</span> <span class="dot d-in_progress"></span> <a href="/t/kid">kid</a>`,
+		`<div class="link"><span class="label"></span> <span class="missing">gone1 (missing)</span></div>`,
+	}, []string{`<span class="label">parent</span>`})
 	_, body = get(t, srv, "/t/kid")
 	check(t, body, []string{`<span class="dot d-in_progress"></span> in progress`}, nil)
+}
+
+func TestTicketReverseLinks(t *testing.T) {
+	srv, tr, st := serveStore(t)
+	if err := tr.AddDep("other", "kid"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.Archive("done", false, false); err != nil {
+		t.Fatal(err)
+	}
+	for id, body := range map[string]string{"epic": "About kid.", "done": "Was kid.", "kid": "I am kid; see `other`."} {
+		tk, err := st.Load(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tk.Body = body
+		if err := st.Save(tk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, body := get(t, srv, "/t/kid")
+	// One line per ticket, labelled on the first line of each group, in
+	// group order and then outline order.
+	want := []string{
+		`<span class="label">parent</span> <span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
+		`<span class="label">blocks</span> <span class="pos">2</span> <span class="dot d-open"></span> <a href="/t/other">other</a>`,
+		`<span class="title">T other <span class="deps">← <a href="/t/kid">kid</a></span></span></div>`,
+		`<span class="label">mentioned by</span> <span class="pos">1</span> <span class="dot d-open"></span> <a href="/t/epic">epic</a>`,
+		`<div class="link s-closed archived"><span class="label"></span> <span class="pos">-</span> <span class="dot d-archived"></span> <a href="/t/done">done</a>`,
+		`<span class="label"></span> <span class="pos">2</span> <span class="dot d-open"></span> <a href="/t/other">other</a>`,
+	}
+	check(t, body, want, nil)
+	for i := 1; i < len(want); i++ {
+		if strings.Index(body, want[i-1]) > strings.Index(body, want[i]) {
+			t.Errorf("%q before %q", want[i], want[i-1])
+		}
+	}
+	_, body = get(t, srv, "/t/other")
+	check(t, body, []string{`<span class="label">blocked by</span>`}, []string{`<span class="label">blocks</span>`, `<span class="label">mentioned by</span>`})
 }
 
 func TestResolve(t *testing.T) {

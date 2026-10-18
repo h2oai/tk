@@ -634,6 +634,21 @@ func count(l []string, s string) int {
 	return n
 }
 
+func TestBlocks(t *testing.T) {
+	tr, _ := build(t, "z\n  y\nq\na")
+	for _, id := range []string{"a", "y"} {
+		if err := tr.AddDep(id, "q"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := tr.Blocks("q"); !reflect.DeepEqual(got, []string{"y", "a"}) {
+		t.Errorf("Blocks(q) = %v, want outline order [y a]", got)
+	}
+	if got := tr.Blocks("a"); got != nil {
+		t.Errorf("Blocks(a) = %v", got)
+	}
+}
+
 func TestRemoveDep(t *testing.T) {
 	tr, st := build(t, "a\nb")
 	_ = tr.AddDep("a", "b")

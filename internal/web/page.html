@@ -28,6 +28,13 @@ nav b { color: var(--fg); }
 .d-closed { background: var(--green); }
 .d-archived { background: var(--gray); }
 .meta { color: var(--muted); margin: .25rem 0; }
+.links { display: grid; grid-template-columns: repeat(5, max-content) minmax(0, 1fr); column-gap: 1ch; margin: .5rem 0; }
+.link { display: contents; }
+.link > * { padding: 1px 0; }
+.link > .dot { align-self: center; padding: 0; }
+.link .label { color: var(--muted); grid-column: 1; padding-right: 1ch; }
+.link .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.missing { grid-column: 4 / -1; color: var(--warn); }
 .chips { margin: .25rem 0; }
 .deps { color: var(--warn); }
 .badge { --c: var(--gray); color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); border-radius: 1em; padding: 0 .5em; font-size: 12px; }
@@ -60,12 +67,16 @@ th, td { border: 1px solid var(--line); padding: 2px 8px; }
 {{- else}}{{with .Doc}}
 <h1>{{.Ticket.Title}}</h1>
 <p class="chips">{{template "dot" .Ticket}} {{template "status" .Ticket}} {{template "badges" .Ticket}}</p>
-<p class="meta">{{.Ticket.ID}} · {{.Pos}}
-  {{- with .Parent}} · under <a href="/t/{{.ID}}">{{.ID}}</a> “{{.Title}}”{{end}} · {{.Ticket.Created.UTC.Format "2006-01-02T15:04:05Z"}}</p>
-{{- with .Blockers}}
-<p class="meta">blocked by: {{range $i, $b := .}}{{if $i}}, {{end}}
-  {{- with .Ticket}}{{template "dot" .}} <a href="/t/{{.ID}}">{{.ID}}</a> “{{.Title}}” ({{$b.Pos}}){{else}}{{.ID}} (missing){{end}}
-  {{- end}}</p>
+<p class="meta">{{.Ticket.ID}} · {{.Pos}} · {{.Ticket.Created.UTC.Format "2006-01-02T15:04:05Z"}}</p>
+{{- with .Links}}
+<div class="links">
+{{- range .}}{{$r := .Row}}
+<div class="link{{with $r.Ticket}} s-{{.Status}}{{if .Archived}} archived{{end}}{{end}}"><span class="label">{{.Label}}</span>
+  {{- with $r.Ticket}} <span class="pos">{{$r.Pos}}</span> {{template "dot" .}} <a href="/t/{{.ID}}">{{.ID}}</a>
+  <span>{{template "badges" .}}</span> <span class="title">{{.Title}}{{template "deps" $r.Blockers}}</span>
+  {{- else}} <span class="missing">{{.Missing}} (missing)</span>{{end}}</div>
+{{- end}}
+</div>
 {{- end}}
 {{- with .Children}}
 <h2>Children</h2>
@@ -93,9 +104,11 @@ th, td { border: 1px solid var(--line); padding: 2px 8px; }
 {{- define "row"}}
 <div class="row s-{{.Ticket.Status}}{{if .Ticket.Archived}} archived{{end}}{{if .Ready}} top{{end}}" style="padding-left: calc({{.Depth}} * 2ch + 4px)">
   <span class="pos">{{.Pos}}</span> {{template "dot" .Ticket}} <a href="/t/{{.Ticket.ID}}">{{.Ticket.ID}}</a>
-  {{template "badges" .Ticket}} <span class="title">{{.Ticket.Title}}</span>
-  {{- with .Blockers}} <span class="deps">← {{range $i, $b := .}}{{if $i}}, {{end}}<a href="/t/{{$b}}">{{$b}}</a>{{end}}</span>{{end}}
+  {{template "badges" .Ticket}} <span class="title">{{.Ticket.Title}}</span>{{template "deps" .Blockers}}
 </div>
+{{- end}}
+{{- define "deps"}}
+  {{- with .}} <span class="deps">← {{range $i, $b := .}}{{if $i}}, {{end}}<a href="/t/{{$b}}">{{$b}}</a>{{end}}</span>{{end}}
 {{- end}}
 {{- define "dot" -}}
 <span class="dot d-{{if .Archived}}archived{{else}}{{.Status}}{{end}}"></span>

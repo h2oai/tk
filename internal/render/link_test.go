@@ -1,6 +1,9 @@
 package render
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestLinkify(t *testing.T) {
 	href := func(s string) string {
@@ -30,6 +33,23 @@ func TestLinkify(t *testing.T) {
 	for _, c := range cases {
 		if got := Linkify(c.in, href); got != c.want {
 			t.Errorf("Linkify(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestMentions(t *testing.T) {
+	known := func(s string) bool { return s == "fanir7" || s == "igoro8" }
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"igoro8 then fanir7, igoro8 again", []string{"igoro8", "fanir7"}},
+		{"`fanir7` [igoro8](http://x) https://x/fanir7 banto3", nil},
+		{"```\nfanir7\n```\n## Note\n\nsee igoro8", []string{"igoro8"}},
+	}
+	for _, c := range cases {
+		if got := Mentions(c.in, known); !slices.Equal(got, c.want) {
+			t.Errorf("Mentions(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

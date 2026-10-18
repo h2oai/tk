@@ -85,6 +85,18 @@ func (t *Tree) AddDep(id, blocker string) error {
 	return t.apply(func() error { return t.addDep(id, blocker) })
 }
 
+// Blocks returns the tickets whose blocked-by lists id, in outline order with
+// orphans last.
+func (t *Tree) Blocks(id string) []string {
+	var out []string
+	for _, h := range append(t.Order(), t.Orphans()...) {
+		if slices.Contains(t.tickets[h].BlockedBy, id) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
 // RemoveDep removes blocker from id's blocked-by. Absent entries are a no-op;
 // the blocker need not exist, so dangling ids can be cleaned up.
 func (t *Tree) RemoveDep(id, blocker string) error {

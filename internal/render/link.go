@@ -2,6 +2,7 @@ package render
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -45,6 +46,20 @@ func Linkify(md string, href func(word string) string) string {
 		b.WriteString(linkWords(line[start:], href))
 	}
 	return b.String()
+}
+
+// Mentions returns the distinct words of md for which known is true, in order
+// of first appearance, under the same rules as Linkify: a mention is a word
+// Linkify would link.
+func Mentions(md string, known func(word string) bool) []string {
+	var out []string
+	Linkify(md, func(w string) string {
+		if known(w) && !slices.Contains(out, w) {
+			out = append(out, w)
+		}
+		return ""
+	})
+	return out
 }
 
 func linkWords(s string, href func(string) string) string {
