@@ -95,7 +95,7 @@ Output on success is `<id> <position> [<type>/<effort>] <title>`, e.g. `fanir7 1
 | `tk edit <id>` | Open in `$EDITOR`. Prints `unchanged <id>` and writes nothing if the file was saved as is. Changing `status`, `archived`, `children` or `blocked-by` is refused and nothing is saved; use `start`/`close`/`reopen`, `archive`/`unarchive`, `mv` and `dep`/`undep`, which apply the tree rules. |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id>` / `tk reopen <id>` | Status transitions, with the rules above. |
-| `tk ready [<epic>]` | See above. |
+| `tk ready [-p] [<epic>]` | See above. `--pretty`/`-p` prints the ready ticket rendered like `tk show -p` instead of the one-line output; exit codes and the `blocked: ...` line are unchanged. |
 | `tk mv <id> --under P --at N` (also `--before/--after <id>`) | Reparent and/or reposition. `--at N` counts only siblings that are not archived. |
 | `tk up/down/top/bottom <id>` | Move within siblings, hopping over archived ones. |
 | `tk tui` | Interactive reorder: `j/k` move the cursor, `J/K` down/up among siblings, `H/L` outdent/indent, `g/G` top/bottom among siblings, `enter` open the selected ticket in a read-only, scrollable detail view rendered with glamour (`j/k`, `pgup/pgdn`, `g/G` scroll; `J/K` or `→/←` next/previous ticket in list order; `esc` or `q` back), `e` (list or detail view) edit the ticket in `$EDITOR` with `tk edit`'s rules, after which the detail view re-renders from the top, `q` quit. Archived tickets are never listed. Changes apply immediately through the same checks as `tk mv`; errors show in the status line. It changes ticket contents only through `e`. |

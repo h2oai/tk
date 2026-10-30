@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/charmbracelet/glamour"
+	"github.com/h2oai/tk/internal/render"
 	"github.com/h2oai/tk/internal/tree"
 	"github.com/spf13/cobra"
 )
@@ -11,7 +13,8 @@ import (
 func init() { register(newReadyCmd) }
 
 func newReadyCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var pretty bool
+	c := &cobra.Command{
 		Use:         "ready [epic]",
 		Annotations: map[string]string{lockAnnotation: lockShared},
 		Short:       "Print the highest ready leaf (exit 0 found, 1 nothing left, 2 blocked)",
@@ -32,10 +35,20 @@ func newReadyCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if pretty {
+				out, err := render.Render(t, id, glamour.WithAutoStyle())
+				if err != nil {
+					return err
+				}
+				fmt.Fprint(w, out)
+				return nil
+			}
 			fmt.Fprintf(w, "%s %s %s\n", id, t.Position(id), titleWithType(t.Get(id)))
 			return nil
 		},
 	}
+	c.Flags().BoolVarP(&pretty, "pretty", "p", false, "render the ready ticket as formatted markdown, like show -p")
+	return c
 }
 
 // readyID returns the highest ready leaf under scope. When there is none it

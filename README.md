@@ -128,7 +128,7 @@ Exit codes: `0` a ticket was printed (`<id> <position> [<type>/<effort>] <title>
 | `tk edit <id>` | Open in `$EDITOR` (writes nothing if saved unchanged). |
 | `tk note <id> [text \| - \| -F file]` | Append a timestamped note. |
 | `tk start <id>` / `tk close <id> [--force]` / `tk reopen <id>` | Status transitions. |
-| `tk ready [epic]` | Highest ready leaf; exit 0/1/2 (3 on error). |
+| `tk ready [-p] [epic]` | Highest ready leaf; exit 0/1/2 (3 on error). `--pretty`/`-p` prints it rendered like `tk show -p`. |
 | `tk mv <id> [--under P \| --root] [--at N \| --before X \| --after X]` | Reparent and/or reposition. |
 | `tk up` / `down` / `top` / `bottom <id>` | Move among siblings. |
 | `tk tui` | Reorder tickets interactively: `j`/`k` move the cursor, `J`/`K` siblings, `H`/`L` outdent/indent, `g`/`G` first/last, `Enter` view ticket (`Esc` back), `e` edit in `$EDITOR`, `q` quit. |

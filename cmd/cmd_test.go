@@ -275,6 +275,24 @@ func TestReadyScope(t *testing.T) {
 	contains(t, e.run("ready", b), bc+" 2.1 [task/normal] BChild")
 }
 
+func TestReadyPretty(t *testing.T) {
+	e := newEnv(t)
+	a := e.newT("A")
+	b := e.newT("B")
+	bc := e.newT("BChild", "-b", "child body", "--under", b)
+	if out, want := e.run("ready", "-p"), e.run("show", "-p"); out != want {
+		t.Errorf("ready -p = %q, want show -p %q", out, want)
+	}
+	if out, want := e.run("ready", "--pretty", b), e.run("show", "-p", bc); out != want {
+		t.Errorf("ready -p %s = %q, want %q", b, out, want)
+	}
+	e.run("dep", a, b)
+	out, _, code := e.fail("ready", "-p")
+	if code != 2 || !strings.HasPrefix(out, "blocked: "+a) {
+		t.Errorf("blocked: %d %q", code, out)
+	}
+}
+
 func TestEdit(t *testing.T) {
 	e := newEnv(t)
 	a := e.newT("Alpha")

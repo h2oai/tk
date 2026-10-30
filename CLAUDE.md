@@ -20,7 +20,7 @@ go run main.go [command]   # run without building
 ./tk new "Title" [--type T] [-e E] [--under P] [--at N]   # Create a ticket (prints id)
 ./tk ls [--all] [--archived] [id]       # Outline of the tree with positions
 ./tk show [-p] [partial-id]             # Show ticket details (default: the ready ticket; -p renders with glamour)
-./tk ready [epic]                       # Highest ready leaf (exit 0/1/2, 3 on error)
+./tk ready [-p] [epic]                  # Highest ready leaf (exit 0/1/2, 3 on error; -p renders it like show -p)
 ./tk type <id> <task|bug|feature|chore>  # set type
 ./tk effort <id> <easy|normal|hard>      # set expected effort
 ./tk start <id> / close <id> [--force] / reopen <id>
@@ -90,7 +90,7 @@ go run main.go [command]   # run without building
 - `archive.go`: archive/unarchive (set the `archived` flag on subtrees)
 - `fsck.go`: integrity checks (orphans, ticket in two parents, dangling ids, cycles, dep rule violations, archived invariants)
 
-**`internal/render/`**: `Markdown` builds a ticket's markdown document and `Render` renders it with glamour; shared by `tk show --pretty` (`glamour.WithAutoStyle()`, glamour's default wrap) and the TUI detail view. `Linkify` (`link.go`) turns whole-word ids into markdown links, skipping code, links, URLs and HTML; the web view uses it with `/t/<id>` targets, and `Mentions` collects the ids it would link, for the web view's "Mentioned by" section. `TerminalStyle` picks dark or light from the terminal background; the TUI calls it once in `Run`, before Bubble Tea reads input.
+**`internal/render/`**: `Markdown` builds a ticket's markdown document and `Render` renders it with glamour; shared by `tk show --pretty`, `tk ready --pretty` (`glamour.WithAutoStyle()`, glamour's default wrap) and the TUI detail view. `Linkify` (`link.go`) turns whole-word ids into markdown links, skipping code, links, URLs and HTML; the web view uses it with `/t/<id>` targets, and `Mentions` collects the ids it would link, for the web view's "Mentioned by" section. `TerminalStyle` picks dark or light from the terminal background; the TUI calls it once in `Run`, before Bubble Tea reads input.
 
 **`internal/edit/`**: `$EDITOR` round trip shared by `tk edit` and the TUI. `Start` reads the ticket's raw file (`Tree.Raw`) under a shared lock into a temp file; `Finish` validates it, writes nothing if it is byte-identical (`unchanged`), refuses if the file changed on disk meanwhile, and saves via `Tree.Replace` under an exclusive lock. `Replace` refuses any change to `status`, `archived`, `children` or `blocked-by` (pointing at `start/close/reopen`, `archive/unarchive`, `mv`, `dep/undep`), so edits never bypass the tree rules; title, body, type, effort and `created` are free.
 
